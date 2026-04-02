@@ -1,0 +1,195 @@
+require(grDevices)
+library(plotrix)
+library(data.table)
+
+# koordináták & szinek ----------------------------------------------------------
+# kozepso koordinatak
+x <- 25
+y <- 25
+cent_coords_x <- c()
+cent_coords_y <- c()
+for (i in 1:3){
+  for (j in 1:3){
+    cent_coords_x <- append(cent_coords_x,x)
+    cent_coords_y <- append(cent_coords_y,y)
+    x <- x + 50
+  }
+  y <- y + 50
+  x <- 25
+}
+# szelso koordinatak
+x <- 2
+y <- 2
+corn_coords_x <- c()
+corn_coords_y <- c()
+for (i in 1:3){
+  for (j in 1:3){
+    corn_coords_x <- append(corn_coords_x,x)
+    corn_coords_y <- append(corn_coords_y,y)
+    x <- x + 50
+  }
+  y <- y + 50
+  x <- 2
+}
+# szinek
+szinek <- c("red","blue","green","yellow")
+
+# prototípus generalas ----------------------------------------------------
+
+# Load the itertools library
+library(itertools)
+
+# Generate all combinations of placing 4 items in 9 cells
+combinations <- combn(9,5)
+
+# Convert combinations to numeric vectors
+vectors <- apply(combinations,2, function(combination) {
+  vector <- rep(0, 9)
+  vector[combination] <- 1
+  return(vector)
+})
+
+set.seed(112) # Setting seed for reproducibility
+# Randomly select 91 out of the 126 combinations
+selected_indices <- sample(1:ncol(combinations), 91)
+selected_vectors <- vectors[, selected_indices]
+
+# Generate shapes
+shape_vectors <- apply(selected_vectors, 2, function(vector) {
+  vector[vector == 1] <- sample(1:4, sum(vector == 1), replace = TRUE)
+  return(vector)
+})
+
+# Generate colors
+color_vectors <- apply(selected_vectors, 2, function(vector) {
+  vector[vector == 1] <- sample(1:4, sum(vector == 1), replace = TRUE)
+  return(vector)
+})
+
+# generate familiars and fillers
+for (j in 1:ncol(selected_vectors)){
+  pict <- shape_vectors[,j]
+  
+  if (j == 1){
+    eval(parse(text=paste("png('familiar",j,".png')", sep="")))
+  } else {
+    eval(parse(text=paste("png('filler",j-1,".png')", sep="")))
+  }
+  
+  plot(c(0, 150), c(0, 150), type = "n", xlab = "", ylab = "", main = "", axes=FALSE)
+  for (i in 1:9){
+    if (pict[i] == 1){
+      rect(corn_coords_x[i], corn_coords_y[i], corn_coords_x[i]+46, corn_coords_y[i]+46, col = szinek[color_vectors[i,j]], lwd = 2)
+    }
+    if (pict[i] == 2){
+      polygon(c(corn_coords_x[i],corn_coords_x[i]+23,corn_coords_x[i]+46,corn_coords_x[i]),
+              c(corn_coords_y[i],corn_coords_y[i]+46, corn_coords_y[i], corn_coords_y[i]),
+              xpd = TRUE, col = szinek[color_vectors[i,j]], lty = 1, lwd = 2, border = "black")
+    }
+    if (pict[i] == 3){
+      draw.circle(cent_coords_x[i],cent_coords_y[i], radius = 21, col = szinek[color_vectors[i,j]], border="black",lty=1,lwd=2)
+    }
+    if (pict[i] == 4){
+      # Pentagon coordinates
+      radius <- 23
+      angles <- seq(0, 2*pi, length.out = 6)[-6]  # 5 points
+      x_coords <- cent_coords_x[i] + radius * cos(angles)
+      y_coords <- cent_coords_y[i] + radius * sin(angles)
+      polygon(x_coords, y_coords, col = szinek[color_vectors[i,j]], border = "black", lty = 1, lwd = 2)
+    }
+  }
+  dev.off()
+}
+
+# Function to modify vectors with linked modifications
+modify_vectors_linked <- function(shape_vectors, color_vectors, num_modifications, value_range_shapes, value_range_colors) {
+  modified_shapes <- list()
+  modified_colors <- list()
+  
+  for (i in 1:5) {
+    shape_vector <- shape_vectors[, i]
+    color_vector <- color_vectors[, i]
+    
+    new_shape_vector <- shape_vector
+    new_color_vector <- color_vector
+    
+    indices <- which(shape_vector != 0)
+    random_indices <- sample(indices, num_modifications)
+    
+    for (idx in random_indices) {
+      new_shape <- sample(value_range_shapes[value_range_shapes != shape_vector[idx]], 1)
+      new_color <- sample(value_range_colors[value_range_colors != color_vector[idx]], 1)
+      
+      new_shape_vector[idx] <- new_shape
+      new_color_vector[idx] <- new_color
+    }
+    
+    modified_shapes <- append(modified_shapes, list(new_shape_vector))
+    modified_colors <- append(modified_colors, list(new_color_vector))
+  }
+  
+  return(list(modified_shapes, modified_colors))
+}
+
+# Generate modified vectors with 1 to 5 modifications
+modified_vectors_one_mod   <- modify_vectors_linked(shape_vectors[,1:1], color_vectors[,1:1], 1, 1:4, 1:4)
+modified_vectors_two_mods  <- modify_vectors_linked(shape_vectors[,1:1], color_vectors[,1:1], 2, 1:4, 1:4)
+modified_vectors_three_mods<- modify_vectors_linked(shape_vectors[,1:1], color_vectors[,1:1], 3, 1:4, 1:4)
+modified_vectors_four_mods <- modify_vectors_linked(shape_vectors[,1:1], color_vectors[,1:1], 4, 1:4, 1:4)
+modified_vectors_five_mods <- modify_vectors_linked(shape_vectors[,1:1], color_vectors[,1:1], 5, 1:4, 1:4)
+
+# Combine all modified sets
+all_modified_vectors <- list(
+  modified_vectors_one_mod,
+  modified_vectors_two_mods,
+  modified_vectors_three_mods,
+  modified_vectors_four_mods,
+  modified_vectors_five_mods
+)
+
+
+# Iterate through the list in a for loop
+for (set_index in 1:length(all_modified_vectors)) {
+  current_set <- all_modified_vectors[[set_index]]
+  
+  cat("Processing set", set_index, ":\n")
+  
+  for (vector_index in 1:length(current_set[[1]])) {
+    pict <- current_set[[1]][[vector_index]]
+    if (set_index == 1){
+      eval(parse(text=paste("png('target_",vector_index,"_d1.png')", sep="")))
+    } else if (set_index == 2) {
+      eval(parse(text=paste("png('target_",vector_index,"_d2.png')", sep="")))
+    } else if (set_index == 3) {
+      eval(parse(text=paste("png('target_",vector_index,"_d3.png')", sep="")))
+    } else if (set_index == 4) {
+      eval(parse(text=paste("png('target_",vector_index,"_d4.png')", sep="")))
+    } else if (set_index == 5) {
+      eval(parse(text=paste("png('target_",vector_index,"_d5.png')", sep="")))
+    }
+    
+    plot(c(0, 150), c(0, 150), type = "n", xlab = "", ylab = "", main = "", axes=FALSE)
+    for (i in 1:9){
+      if (pict[i] == 1){
+        rect(corn_coords_x[i], corn_coords_y[i], corn_coords_x[i]+46, corn_coords_y[i]+46, col = szinek[current_set[[2]][[vector_index]][i]], lwd = 2)
+      }
+      if (pict[i] == 2){
+        polygon(c(corn_coords_x[i],corn_coords_x[i]+23,corn_coords_x[i]+46,corn_coords_x[i]),
+                c(corn_coords_y[i],corn_coords_y[i]+46, corn_coords_y[i], corn_coords_y[i]),
+                xpd = TRUE, col = szinek[current_set[[2]][[vector_index]][i]], lty = 1, lwd = 2, border = "black")
+      }
+      if (pict[i] == 3){
+        draw.circle(cent_coords_x[i],cent_coords_y[i], radius = 21, col = szinek[current_set[[2]][[vector_index]][i]], border="black",lty=1,lwd=2)
+      }
+      if (pict[i] == 4){
+        # Pentagon coordinates
+        radius <- 23
+        angles <- seq(0, 2*pi, length.out = 6)[-6]  # 5 points
+        x_coords <- cent_coords_x[i] + radius * cos(angles)
+        y_coords <- cent_coords_y[i] + radius * sin(angles)
+        polygon(x_coords, y_coords, col = szinek[current_set[[2]][[vector_index]][i]], border = "black", lty = 1, lwd = 2)
+      }
+    }
+    dev.off()
+  }
+}

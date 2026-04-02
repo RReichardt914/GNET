@@ -1,0 +1,5 @@
+"0","novels <- Study_ResponsesByType[type != ""prototype"" & response == ""left"",sum(N),by=mutichar_knowresp]
+"
+"2","Error in eval(bysub, parent.frame(), parent.frame()) : 
+  object 'mutichar_knowresp' not found
+"

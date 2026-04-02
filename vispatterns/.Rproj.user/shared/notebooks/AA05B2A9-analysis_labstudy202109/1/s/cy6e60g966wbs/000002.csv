@@ -1,0 +1,5 @@
+"0","source(""registerdata_labstudy.R"")"
+"0",""
+"0","jkwid <- jkwid[Add.meg.az.e.mailben.kapott.kódot. %in% TestSummary$workerId]"
+"2","Error in eval(stub[[3L]], x, enclos) : object 'TestSummary' not found
+"

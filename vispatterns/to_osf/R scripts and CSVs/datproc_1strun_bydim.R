@@ -1,0 +1,78 @@
+library(data.table)
+library(stringr)
+
+# get 2nd run data from csv
+GNET_pilot_RUN1_alldata <- as.data.table(read.csv("gnet_pilot_1strun.csv"))
+GNET_pilot_RUN1_alldata <-
+  GNET_pilot_RUN1_alldata[,c("batchId","batchTitle",
+                             "count_study_sequence","count_test_sequence","datetime",
+                             "response","response_study_response","response_test_response",
+                             "response_time","response_time_study_response","response_time_test_response",
+                             "stim","studyResultId","workerId")]
+
+GNET_pilot_RUN1_alldata$workerId <- as.character(GNET_pilot_RUN1_alldata$workerId)
+# trial type category
+GNET_pilot_RUN1_alldata$type <- ""
+GNET_pilot_RUN1_alldata[str_detect(stim,"prototype"),type:="prototype"]
+GNET_pilot_RUN1_alldata[str_detect(stim,"sarr[1-4]"),type:="sarr"]
+GNET_pilot_RUN1_alldata[str_detect(stim,"sarrsha[1-4]"),type:="sarrsha"]
+GNET_pilot_RUN1_alldata[str_detect(stim,"sarrcol[1-4]"),type:="sarrcol"]
+GNET_pilot_RUN1_alldata[str_detect(stim,"sarrshacol[1-4]"),type:="sarrshacol"]
+GNET_pilot_RUN1_alldata[str_detect(stim,"p[6-9]"),type:="diffarr"]
+GNET_pilot_RUN1_alldata[str_detect(stim,"p10"),type:="diffarr"]
+# trial quality
+GNET_pilot_RUN1_alldata$tq <- ""
+GNET_pilot_RUN1_alldata[is.na(count_test_sequence),tq:="study"]
+GNET_pilot_RUN1_alldata[!is.na(count_test_sequence),tq:="test"]
+GNET_pilot_RUN1_alldata[str_detect(stim,"[1-2].png") & tq == "test",tq:="old"]
+GNET_pilot_RUN1_alldata[str_detect(stim,"[3-4].png") & tq == "test",tq:="new"]
+# calculated indices
+GNET_pilot_RUN1_alldata$DTF <- 0
+GNET_pilot_RUN1_alldata$ColDTF <- 0
+GNET_pilot_RUN1_alldata$ShaDTF <- 0
+GNET_pilot_RUN1_alldata$ArrDTF <- 0
+
+GNET_pilot_RUN1_alldata$DTAF <- 0
+GNET_pilot_RUN1_alldata$ColDTAF <- 0
+GNET_pilot_RUN1_alldata$ShaDTAF <- 0
+GNET_pilot_RUN1_alldata$ArrDTAF <- 0
+
+GNET_pilot_RUN1_alldata$DTAN <- 0
+GNET_pilot_RUN1_alldata$ColDTAN <- 0
+GNET_pilot_RUN1_alldata$ShaDTAN <- 0
+GNET_pilot_RUN1_alldata$ArrDTAN <- 0
+
+GNET_pilot_RUN1_alldata$DTN_byPhase <- 0
+GNET_pilot_RUN1_alldata$ColDTN_bP <- 0
+GNET_pilot_RUN1_alldata$ShaDTN_bP <- 0
+GNET_pilot_RUN1_alldata$ArrDTN_bP <- 0
+
+for (i in 1:nrow(GNET_pilot_RUN1_alldata)){
+  for (j in 1:nrow(difference_indices)){
+    if (grepl(difference_indices$pict[j],GNET_pilot_RUN1_alldata$stim[i])){
+      GNET_pilot_RUN1_alldata$DTF[i] <- difference_indices$DTF[j]
+      GNET_pilot_RUN1_alldata$ColDTF[i] <- difference_indices$ColDTF[j]
+      GNET_pilot_RUN1_alldata$ShaDTF[i] <- difference_indices$ShaDTF[j]
+      GNET_pilot_RUN1_alldata$ArrDTF[i] <- difference_indices$ArrDTF[j]
+      
+      GNET_pilot_RUN1_alldata$DTAF[i] <- difference_indices$DTAF[j]
+      GNET_pilot_RUN1_alldata$ColDTAF[i] <- difference_indices$ColDTAF[j]
+      GNET_pilot_RUN1_alldata$ShaDTAF[i] <- difference_indices$ShaDTAF[j]
+      GNET_pilot_RUN1_alldata$ArrDTAF[i] <- difference_indices$ArrDTAF[j]
+      
+      GNET_pilot_RUN1_alldata$DTAN[i] <- difference_indices$DTAN[j]
+      GNET_pilot_RUN1_alldata$ColDTAN[i] <- difference_indices$ColDTAN[j]
+      GNET_pilot_RUN1_alldata$ShaDTAN[i] <- difference_indices$ShaDTAN[j]
+      GNET_pilot_RUN1_alldata$ArrDTAN[i] <- difference_indices$ArrDTAN[j]
+      
+      GNET_pilot_RUN1_alldata$DTN_byPhase[i] <- difference_indices$DTN_byPhase[j]
+      GNET_pilot_RUN1_alldata$ColDTN_bP[i] <- difference_indices$ColDTN_bP[j]
+      GNET_pilot_RUN1_alldata$ShaDTN_bP[i] <- difference_indices$ShaDTN_bP[j]
+      GNET_pilot_RUN1_alldata$ArrDTN_bP[i] <- difference_indices$ArrDTN_bP[j]
+      
+      GNET_pilot_RUN1_alldata$DTN[i] <- difference_indices$DTN[j]
+    }
+  }
+}
+
+rm(i,j)

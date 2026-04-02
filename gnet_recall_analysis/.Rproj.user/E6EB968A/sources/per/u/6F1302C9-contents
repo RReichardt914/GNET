@@ -1,0 +1,7 @@
+
+filtered_data <- clean_vector[!is.na(as.numeric(participantID)) & participantID >= 1 & participantID <= 140]
+
+
+selected_rows <- clean_vector[159:.N]
+
+last_column <- selected_rows[, ncol(selected_rows)]

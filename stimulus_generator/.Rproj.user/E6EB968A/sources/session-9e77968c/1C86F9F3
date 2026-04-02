@@ -1,0 +1,27 @@
+{
+    "id": "1C86F9F3",
+    "path": "~/stimulus_generator/stimgenscript_v3_memorability.R",
+    "project_path": "stimgenscript_v3_memorability.R",
+    "type": "r_source",
+    "hash": "0",
+    "contents": "",
+    "dirty": false,
+    "created": 1738579436329.0,
+    "source_on_save": false,
+    "relative_order": 2,
+    "properties": {
+        "tempName": "Untitled1",
+        "source_window_id": "",
+        "Source": "Source",
+        "cursorPosition": "180,140",
+        "scrollLine": "0"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1738582197,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1738582197187,
+    "read_only": false,
+    "read_only_alternatives": []
+}

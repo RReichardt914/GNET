@@ -1,0 +1,21 @@
+{
+    "collab_server" : "",
+    "contents" : "library(data.table)\nlibrary(stringr)\nlibrary(ggplot2)\ngnet2_data <- as.data.table(read.csv(\"gnet_v2_data.csv\", encoding = \"UTF-8\", stringsAsFactors = FALSE))\ngnet2_data <- gnet2_data[,c(\"count_study_sequence\",\"count_test_sequence\",\"datetime\",\n                            \"response\",\"response_study_response\",\"response_test_response\",\n                            \"response_time\",\"response_time_study_response\",\"response_time_test_response\",\n                            \"stim\",\"studyResultId\",\"total_responses\",\n                            \"workerId\")]\ngnet2_data <- gnet2_data[!is.na(workerId),]\n\ngnet2_data[str_detect(stim, \"prototype\"),stimtype:=\"prototype\"]\ngnet2_data[str_detect(stim, \"p[1-5]d1\"),stimtype:=\"D1\"]\ngnet2_data[str_detect(stim, \"p[1-5]d2\"),stimtype:=\"D2\"]\ngnet2_data[str_detect(stim, \"p[1-5]d3\"),stimtype:=\"D3\"]\ngnet2_data[str_detect(stim, \"p[1-5]d4\"),stimtype:=\"D4\"]\ngnet2_data[str_detect(stim, \"p[6-9]\"),stimtype:=\"D5\"]\ngnet2_data[str_detect(stim, \"p10\"),stimtype:=\"D5\"]\n\ngnet2_data[stimtype == \"prototype\" & response_study_response == \"left\", st_corr := 1]\ngnet2_data[stimtype == \"prototype\" & response_study_response == \"right\", st_corr := 0]\ngnet2_data[stimtype != \"prototype\" & response_study_response == \"right\", st_corr := 1]\ngnet2_data[stimtype != \"prototype\" & response_study_response == \"left\", st_corr := 0]\n\ngnet2_data[str_detect(stim, \"_[1-2]\") & !(is.na(response_time_test_response)),test_quality := \"fam\"]\ngnet2_data[str_detect(stim, \"_[3-4]\") & !(is.na(response_time_test_response)),test_quality := \"new\"]\n\ngnet2_data[str_detect(stim, \"_[1-2]\") & response_test_response == \"left\", rt_corr := 1]\ngnet2_data[str_detect(stim, \"_[1-2]\") & response_test_response == \"right\", rt_corr := 0]\ngnet2_data[str_detect(stim, \"_[3-4]\") & response_test_response == \"left\", rt_corr := 0]\ngnet2_data[str_detect(stim, \"_[3-4]\") & response_test_response == \"right\", rt_corr := 1]\n\n# FROM HERE WE USE THE DATA PRODUCED BY: difference_innumbers.R\n\n\n",
+    "created" : 1620211439796.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "4164603415",
+    "id" : "831AA52E",
+    "lastKnownWriteTime" : 1607509247,
+    "last_content_update" : 1607509247,
+    "path" : "~/vispatterns_v2/gnet_v2_preprocessdata.R",
+    "project_path" : "gnet_v2_preprocessdata.R",
+    "properties" : {
+        "tempName" : "Untitled1"
+    },
+    "relative_order" : 18,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_source"
+}

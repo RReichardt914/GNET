@@ -1,0 +1,29 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1618996201574.000,
+    "dirty" : false,
+    "encoding" : "",
+    "folds" : "",
+    "hash" : "0",
+    "id" : "B9435D1C",
+    "lastKnownWriteTime" : 30962749956161635,
+    "last_content_update" : 1618996201574,
+    "path" : null,
+    "project_path" : null,
+    "properties" : {
+        "cacheKey" : "D97165E9",
+        "caption" : "bdlmm",
+        "contentUrl" : "grid_resource/gridviewer.html?env=&obj=bdlmm&cache_key=D97165E9",
+        "displayedObservations" : 2500,
+        "environment" : "",
+        "object" : "bdlmm",
+        "preview" : 0,
+        "totalObservations" : 2500,
+        "variables" : 50
+    },
+    "relative_order" : 15,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_dataframe"
+}

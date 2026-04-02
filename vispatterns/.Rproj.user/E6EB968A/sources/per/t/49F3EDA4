@@ -1,0 +1,26 @@
+{
+    "id": "49F3EDA4",
+    "path": "~/vispatterns/difference_innumbers.R",
+    "project_path": "difference_innumbers.R",
+    "type": "r_source",
+    "hash": "4169853062",
+    "contents": "",
+    "dirty": false,
+    "created": 1710935495322.0,
+    "source_on_save": false,
+    "relative_order": 9,
+    "properties": {
+        "source_window_id": "",
+        "Source": "Source",
+        "cursorPosition": "10,40",
+        "scrollLine": "0"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1632312593,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1632312593,
+    "read_only": false,
+    "read_only_alternatives": []
+}

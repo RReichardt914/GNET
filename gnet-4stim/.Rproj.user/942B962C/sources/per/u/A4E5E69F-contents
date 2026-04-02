@@ -1,0 +1,70 @@
+
+# Packages
+library(sjPlot)
+library(ggplot2)
+library(patchwork)
+
+# Your four plots
+p_orig   <- plot_model(gnet4s_orig_TLMM,  type = "int")
+p_delay  <- plot_model(gnet4s_delay_TLMM, type = "int")
+p_artn   <- plot_model(gnet4s_artn_TLMM,  type = "int")
+p_delart <- plot_model(gnet4s_delart_TLMM, type = "int")
+
+# ----- SHARED AXES from previous step (optional, if you already did this) -----
+get_ranges <- function(p) {
+  b <- ggplot_build(p)
+  pp <- b$layout$panel_params[[1]]
+  xr <- if (!is.null(pp$x.range)) pp$x.range else if (!is.null(pp$x$range)) pp$x$range else range(pp$x$breaks, na.rm = TRUE)
+  yr <- if (!is.null(pp$y.range)) pp$y.range else if (!is.null(pp$y$range)) pp$y$range else range(pp$y$breaks, na.rm = TRUE)
+  list(x = xr, y = yr)
+}
+r1 <- get_ranges(p_orig); r2 <- get_ranges(p_delay); r3 <- get_ranges(p_artn); r4 <- get_ranges(p_delart)
+common_x <- range(c(r1$x, r2$x, r3$x, r4$x), na.rm = TRUE)
+common_y <- range(c(r1$y, r2$y, r3$y, r4$y), na.rm = TRUE)
+
+# ----- Styling: y-label, legend title, legend labels, and shared legend -----
+
+# Helper that:
+#  - sets y-axis label
+#  - renames legend title for tq -> "Trial type"
+#  - relabels legend entries: new -> "distractor"; old -> "target"
+#  - applies the common axis limits
+apply_common_styling <- function(p) {
+  # Try to apply relabels across common aesthetics that sjPlot may use
+  p +
+    labs(y = "Probability of 'seen' response") +
+    coord_cartesian(xlim = common_x, ylim = common_y) +
+    # Color legend
+    scale_color_discrete(
+      name   = "Trial type",
+      breaks = c("new", "old"),
+      labels = c("distractor", "target")
+    ) +
+    # Fill legend (if used)
+    scale_fill_discrete(
+      name   = "Trial type",
+      breaks = c("new", "old"),
+      labels = c("distractor", "target")
+    ) +
+    # Linetype legend (if used)
+    scale_linetype_discrete(
+      name   = "Trial type",
+      breaks = c("new", "old"),
+      labels = c("distractor", "target")
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(plot.title = element_text(face = "bold", hjust = 0.5))
+}
+
+p_orig_al   <- apply_common_styling(p_orig)   + labs(title = "Original")
+p_delay_al  <- apply_common_styling(p_delay)  + labs(title = "Delay")
+p_artn_al   <- apply_common_styling(p_artn)   + labs(title = "Narrative")
+p_delart_al <- apply_common_styling(p_delart) + labs(title = "Narrative with delay")
+
+# Arrange with a single shared legend
+grid_plot <- ((p_orig_al | p_delay_al) / (p_artn_al | p_delart_al)) +
+  plot_layout(guides = "collect") & theme(legend.position = "right")
+
+# Save
+ggsave("interaction_grid.png", grid_plot, width = 10, height = 8, dpi = 300, bg = "white")
+ggsave("interaction_grid.pdf", grid_plot, width = 10, height = 8, device = cairo_pdf)

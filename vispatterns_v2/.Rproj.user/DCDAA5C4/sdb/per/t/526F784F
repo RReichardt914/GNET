@@ -1,0 +1,21 @@
+{
+    "collab_server" : "",
+    "contents" : "correct <- gnet2_data[test_quality == \"new\" & rt_corr == 1, .N, by=workerId]\nmiss <- gnet2_data[test_quality == \"new\" & rt_corr == 0, .N, by=workerId]\nsum <- merge(correct,miss,by=\"workerId\")\ncolnames(sum) <- c(\"workerId\",\"CorrReject\",\"FalseAlarm\")\ncorrect <- gnet2_data[test_quality == \"fam\" & rt_corr == 1, .N, by=workerId]\nmiss <- gnet2_data[test_quality == \"fam\" & rt_corr == 0, .N, by=workerId]\nsum2 <- merge(correct,miss,by=\"workerId\")\ncolnames(sum2) <- c(\"workerId\",\"CorrRecog\",\"Miss\")\nall <- merge(sum,sum2,by=\"workerId\")\nall[,RecognitionScore := CorrRecog - FalseAlarm]\nall[,RejectionScore := CorrReject - Miss]\nall[,DistinctionScore := RecognitionScore + RejectionScore]\n\n\nggplot(all, aes(RecognitionScore)) + \n  geom_bar()\n\nggplot(all, aes(RejectionScore)) +\n  geom_bar()\n\nggplot(all, aes(DistinctionScore)) +\n  geom_bar()\n\n# just for gnet_v2\nstprotrecog <- gnet2_data[stimtype == \"prototype\" & st_corr == 1, .N, by=workerId]\nstdiffrecog <- gnet2_data[stimtype != \"prototype\" & st_corr == 1 & total_responses < 76, .N, by=workerId]\n# jsut for judge diff\ngnet2_data$response_study_response <- as.numeric(gnet2_data$response_study_response)\ndata <- gnet2_data[!is.na(response_study_response),mean(response_study_response),by=c(\"workerId\",\"stimtype\")]\nggplot(data,aes(stimtype,V1)) + \n  geom_jitter(width=0.2) + \n  stat_summary(fun.y=mean, colour=\"red\", geom=\"text\", show.legend = FALSE, \n               vjust=-3.0, aes( label=round(..y.., digits=3)))\n######\n# BY STIM RECOG\n\ndat <- gnet2_data[!(is.na(rt_corr)),sum(rt_corr),by=c(\"stim\")]\n\ndat$stimtype <- \"\"\ndat[str_detect(stim, \"prototype\"),stimtype:=\"prototype\"]\ndat[str_detect(stim, \"p[1-5]d1\"),stimtype:=\"D1\"]\ndat[str_detect(stim, \"p[1-5]d2\"),stimtype:=\"D2\"]\ndat[str_detect(stim, \"p[1-5]d3\"),stimtype:=\"D3\"]\ndat[str_detect(stim, \"p[1-5]d4\"),stimtype:=\"D4\"]\ndat[str_detect(stim, \"p[6-9]\"),stimtype:=\"D5\"]\ndat[str_detect(stim, \"p10\"),stimtype:=\"D5\"]\n# dat$stimtype <- as.factor(dat$stimtype, ordered = TRUE, levels = c(\"D1\",\"D2\",\"D3\",\"D4\",\"D5\"))\nggplot(dat[order(dat$stimtype)],aes(x = V1, y = stim, fill=stimtype, order = stimtype)) + geom_col()\n# not in order\n",
+    "created" : 1620210203313.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "2821159927",
+    "id" : "526F784F",
+    "lastKnownWriteTime" : 1620240182,
+    "last_content_update" : 1620240182751,
+    "path" : "~/vispatterns_v2/quick_glance.R",
+    "project_path" : "quick_glance.R",
+    "properties" : {
+        "tempName" : "Untitled1"
+    },
+    "relative_order" : 16,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_source"
+}

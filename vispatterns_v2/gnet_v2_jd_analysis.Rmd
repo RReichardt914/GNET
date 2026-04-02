@@ -1,0 +1,430 @@
+---
+title: "Graded Novelty Enoding Task - 4 shapes version - judge difference"
+output:
+  html_document:
+    toc: true
+    toc_float: 
+      collapsed: false
+    toc_depth: 4
+---
+```{r  include=FALSE}
+source("difference_innumbers.R")
+source("gnet_v2_jd_processdata.R")
+
+library(ez)
+library(ggplot2)
+library(emmeans)
+library(DescTools)
+library(stats)
+library(afex)
+library(effsize)
+```
+
+```{r  include=FALSE}
+# preprocessed data and difference indices are used to calculate study and test indices
+gnet2_data$DTF <- 0
+gnet2_data$DTAF <- 0
+gnet2_data$DTAN <- 0
+gnet2_data$DTN_byPhase <- 0
+
+for (i in 1:nrow(gnet2_data)){
+  for (j in 1:nrow(difference_indices)){
+    if (grepl(difference_indices$pict[j],gnet2_data$stim[i])){
+      gnet2_data$DTF[i] <- difference_indices$DTF[j]
+      gnet2_data$DTAF[i] <- difference_indices$DTAF[j]
+      gnet2_data$DTAN[i] <- difference_indices$DTAN[j]
+      gnet2_data$DTN_byPhase[i] <- difference_indices$DTN_byPhase[j]
+    }
+  }
+}
+# at this point we have all the data with all of the calculated difference indicators
+gnet2_data$identifier <- paste(gnet2_data$workerId, "_", gnet2_data$studyResultId, sep="")
+```
+
+```{r  include=FALSE}
+# study DT ####
+gnet2_data[response_study_response == "None",
+           response_study_response := NA]
+gnet2_data$response_study_response <- as.numeric(gnet2_data$response_study_response)
+
+mean_jds <- gnet2_data[!is.na(response_study_response) & is.na(count_test_sequence),
+                       mean(response_study_response),by=c("workerId","studyResultId","stimtype")]
+sd_jds <- gnet2_data[!is.na(response_study_response) & is.na(count_test_sequence),
+                     sd(response_study_response),by=c("workerId","studyResultId","stimtype")]
+mean_jds$identifier <- paste(mean_jds$workerId, "_", mean_jds$studyResultId, sep="")
+
+#####
+# mean_jds is output
+
+# GENERATE TEST DT ####
+test_dat <- gnet2_data[!is.na(count_test_sequence), .N, by=.(studyResultId,workerId,stimtype,test_quality,rt_corr)]
+
+test_dat$identifier <- paste(test_dat$workerId, "_", test_dat$studyResultId, sep="")
+
+mycols  = c("identifier","stimtype","test_quality","rt_corr")
+setkeyv(test_dat,mycols)
+test_dat_c <- test_dat[J(do.call(CJ,lapply(mycols,function(x)unique(get(x)))))]
+for (i in 1:nrow(test_dat_c)){
+  if (is.na(test_dat_c$N[i])){
+    test_dat_c$N[i] <- 0
+  }
+}
+
+fna <- test_dat_c[is.na(rt_corr) & test_quality == "fam",]
+fna$workerId <- c(fna[,str_split(identifier, pattern = "_")][1])
+fna$studyResultId <- c(fna[,str_split(identifier, pattern = "_")][2])
+colnames(fna) <- c("studyResultId","workerId","stimtype","test_quality","rt_corr","fam_NA","identifier")
+fc <- test_dat_c[rt_corr == 1 & test_quality == "fam",]
+fc$workerId <- c(fc[,str_split(identifier, pattern = "_")][1])
+fc$studyResultId <- c(fc[,str_split(identifier, pattern = "_")][2])
+colnames(fc) <- c("studyResultId","workerId","stimtype","test_quality","rt_corr","fam_corr","identifier")
+ff <- test_dat_c[rt_corr == 0 & test_quality == "fam",]
+ff$workerId <- c(ff[,str_split(identifier, pattern = "_")][1])
+ff$studyResultId <- c(ff[,str_split(identifier, pattern = "_")][2])
+colnames(ff) <- c("studyResultId","workerId","stimtype","test_quality","rt_corr","fam_miss","identifier")
+
+nna <- test_dat_c[is.na(rt_corr) & test_quality == "new",]
+nna$workerId <- c(nna[,str_split(identifier, pattern = "_")][1])
+nna$studyResultId <- c(nna[,str_split(identifier, pattern = "_")][2])
+colnames(nna) <- c("studyResultId","workerId","stimtype","test_quality","rt_corr","new_NA","identifier")
+nc <- test_dat_c[rt_corr == 1 & test_quality == "new",]
+nc$workerId <- c(nc[,str_split(identifier, pattern = "_")][1])
+nc$studyResultId <- c(nc[,str_split(identifier, pattern = "_")][2])
+colnames(nc) <- c("studyResultId","workerId","stimtype","test_quality","rt_corr","new_corr","identifier")
+nf <- test_dat_c[rt_corr == 0 & test_quality == "new",]
+nf$workerId <- c(nf[,str_split(identifier, pattern = "_")][1])
+nf$studyResultId <- c(nf[,str_split(identifier, pattern = "_")][2])
+colnames(nf) <- c("studyResultId","workerId","stimtype","test_quality","rt_corr","new_fa","identifier")
+
+fams <- merge(fna,fc,by=c("stimtype","test_quality","identifier"))
+fams <- merge(fams,ff,by=c("stimtype","test_quality","identifier"))
+fams <- fams[,c("stimtype","test_quality","identifier",
+                          "fam_NA","fam_corr","studyResultId",
+                          "workerId","fam_miss")]
+fams$studyResultId <- as.character(fams$studyResultId)
+fams$workerId <- as.character(fams$workerId)
+
+news <- merge(nna,nc,by=c("stimtype","test_quality","identifier"))
+news <- merge(news,nf,by=c("stimtype","test_quality","identifier"))
+news <- news[,c("stimtype","test_quality","identifier",
+                "new_NA","new_corr","studyResultId","workerId","new_fa")]
+news$studyResultId <- as.character(news$studyResultId)
+news$workerId <- as.character(news$workerId)
+
+test_dat_compl <- merge(fams,news,by=c("studyResultId","workerId","stimtype","identifier"))
+test_dat_compl <- test_dat_compl[,c("studyResultId","workerId","stimtype","identifier",
+                                    "fam_NA","fam_corr","fam_miss",
+                                    "new_NA","new_corr","new_fa")]
+#####
+# test_dat_compl is output
+```
+
+```{r  include=FALSE}
+#  this section is for exclusions
+usable <- gnet2_data[,.N,by=.(workerId,studyResultId)]
+usable <- usable[N == 160,]
+usable <- usable[order(studyResultId),]
+usable <- usable[!(duplicated(workerId)),]
+usable$identifier <- paste(usable$workerId, "_", usable$studyResultId, sep="")
+fineids <- unique(usable$identifier)
+
+study_miss <- gnet2_data[response == "None" & is.na(count_test_sequence), .N, by=c("workerId","studyResultId")]
+study_miss$identifier <- paste(study_miss$workerId, "_", study_miss$studyResultId, sep="")
+
+# drop anyone who missed too many responses (>mean+2*sd)
+dropbystmiss <- 0 # var how many dropped
+limit <- 10
+for (i in 1:nrow(study_miss)){
+  if (study_miss$N[i] >= limit){
+    fineids <- fineids[!fineids == study_miss$identifier[i]]
+    dropbystmiss <- dropbystmiss + 1 
+  }
+}
+stmisslimit <- limit # var the miss limit
+mean_jds <- mean_jds[identifier %in% fineids]
+test_dat_compl <- test_dat_compl[identifier %in% fineids]
+
+
+# drop anyone who missed too many responses in the test
+noresp <- test_dat_compl[,sum(fam_NA, new_NA),by=c("identifier")]
+
+dropbyrtmiss <- 0 # var how many dropped
+limit <- 20
+for (i in 1:nrow(noresp)){
+  if (noresp$V1[i] > limit){
+    fineids <- fineids[!fineids == noresp$identifier[i]]
+    dropbyrtmiss <- dropbyrtmiss + 1 
+  }
+}
+rtmisslimit <- limit # var the miss limit
+mean_jds <- mean_jds[identifier %in% fineids]
+test_dat_compl <- test_dat_compl[identifier %in% fineids]
+
+# drop anyone who misjudged prototype - prototype comparisons
+dropbymisjud <- 0 
+
+protj <- mean_jds[stimtype == "prototype",]
+for (i in 1:nrow(protj)){
+  if (protj$V1[i]>5){
+    fineids <- fineids[!fineids == protj$identifier[i]]
+    dropbymisjud <- dropbymisjud + 1
+  }
+}
+mean_jds <- mean_jds[identifier %in% fineids]
+test_dat_compl <- test_dat_compl[identifier %in% fineids]
+gnet2_data <- gnet2_data[identifier %in% fineids]
+```
+
+# Exclusions
+
+We excluded `r dropbystmiss` participants due to a high number of missed responses in the study phase (<= `r stmisslimit`).
+
+We excluded `r dropbyrtmiss` participants due to low recognition rates (<= `r rtmisslimit`).
+
+We excluded `r dropbymisjud` participants due to inattention to task details as shown by <5 mean difference judged for prototype - prototype comparisons.
+
+This left `r length(unique(mean_jds$identifier))`-`r length(unique(test_dat_compl$identifier))` participants in the analysis.
+
+The identifiers are: `r unique(mean_jds$identifier)`
+
+# Study phase
+
+Participants make a judgement of the difference between a prototype and a novel picture.
+
+```{r  eval = TRUE, warning=FALSE, echo=FALSE}
+ggplot(mean_jds,aes(x=stimtype,y=V1,color=stimtype)) +
+  geom_jitter(width=0.2, alpha=0.5) +
+  stat_summary(geom = "errorbar", fun.data = mean_se, width = 0.2) +
+  stat_summary(geom = "point",fun.y = "mean",col = "black",size = 2,shape = 16) +
+  stat_summary(fun.y=mean, colour="black", geom="text", show.legend = FALSE, 
+               vjust=5.0, aes( label=round(..y.., digits=3)))
+```
+
+# Test phase
+
+Test phase was the same as before: participants see the novel pictures from the study phase with distractors from the same categories. They signal if they think the picture is an old one from the study phase, or a novel distractor.
+
+```{r  eval = TRUE, warning=FALSE, echo=FALSE}
+# BY RESPONSE TYPE
+
+a <- test_dat_compl$fam_corr
+b <- test_dat_compl$new_fa
+print(t.test(a,b,paired = TRUE))
+print(cohen.d(a,b,paired = TRUE,conf.level=0.95))
+d <- with(test_dat_compl, fam_corr - new_fa)
+print(shapiro.test(d))
+
+print("Correct recognition for familiars in test")
+ggplot(test_dat_compl, aes(x=stimtype, y=fam_corr))+
+  geom_jitter(width=0.2, alpha=0.5) +
+  stat_summary(geom = "errorbar", fun.data = mean_se, width = 0.2) +
+  stat_summary(geom = "point",fun.y = "mean",col = "black",size = 2,shape = 16) +
+  stat_summary(fun.y=mean, colour="black", geom="text", show.legend = FALSE, 
+               vjust=-3.0, aes( label=round(..y.., digits=3)))
+
+print("False alarm for novels in test")
+ggplot(test_dat_compl, aes(x=stimtype, y=new_fa))+
+  geom_jitter(width=0.2, alpha=0.5) +
+  stat_summary(geom = "errorbar", fun.data = mean_se, width = 0.2) +
+  stat_summary(geom = "point",fun.y = "mean",col = "black",size = 2,shape = 16) +
+  stat_summary(fun.y=mean, colour="black", geom="text", show.legend = FALSE, 
+               vjust=-3.0, aes( label=round(..y.., digits=3)))
+
+test_dat_compl[,CorrectedRecognitions:=fam_corr-new_fa]
+test_dat_compl[,CorrectedRejections:=new_corr-fam_miss]
+test_dat_compl[,OCCategorizations := CorrectedRecognitions + CorrectedRejections]
+
+print("ANOVA with correct recognition minus false alarm or miss by fam/nov")
+a1 <- aov_ez("identifier", "CorrectedRecognitions",
+             test_dat_compl, within = c("stimtype"))
+a1
+m3 <- emmeans(a1, ~ stimtype)
+pairs(m3)
+posthoc <- pairs(m3)
+contrast(m3, "poly")
+
+ggplot(test_dat_compl, aes(x=stimtype, y=CorrectedRecognitions, color=stimtype))+
+  geom_jitter(width=0.2, alpha=0.5) +
+  stat_summary(geom = "errorbar", fun.data = mean_se, width = 0.2) +
+  stat_summary(geom = "point",fun.y = "mean",col = "black",size = 2,shape = 16) +
+  stat_summary(fun.y=mean, colour="black", geom="text", show.legend = FALSE, 
+               vjust=-3.0, aes( label=round(..y.., digits=3)))
+
+print("ANOVA with correct rejection minus false alarm or miss by fam/nov")
+a1 <- aov_ez("identifier", "CorrectedRejections",
+             test_dat_compl, within = c("stimtype"))
+a1
+m3 <- emmeans(a1, ~ stimtype)
+pairs(m3)
+posthoc <- pairs(m3)
+contrast(m3, "poly")
+
+ggplot(test_dat_compl, aes(x=stimtype, y=CorrectedRejections, color=stimtype))+
+  geom_jitter(width=0.2, alpha=0.5) +
+  stat_summary(geom = "errorbar", fun.data = mean_se, width = 0.2) +
+  stat_summary(geom = "point",fun.y = "mean",col = "black",size = 2,shape = 16) +
+  stat_summary(fun.y=mean, colour="black", geom="text", show.legend = FALSE, 
+               vjust=-3.0, aes( label=round(..y.., digits=3)))
+
+print("ANOVA with corrected differentiation score by category ((crecog-fa)+(creject-fa))")
+a1 <- aov_ez("identifier", "OCCategorizations",
+             test_dat_compl, within = c("stimtype"))
+a1
+m3 <- emmeans(a1, ~ stimtype)
+pairs(m3)
+posthoc <- pairs(m3)
+contrast(m3, "poly")
+
+ggplot(test_dat_compl, aes(x=stimtype, y=OCCategorizations, color=stimtype))+
+  geom_jitter(width=0.2, alpha=0.5) +
+  stat_summary(geom = "errorbar", fun.data = mean_se, width = 0.2) +
+  stat_summary(geom = "point",fun.y = "mean",col = "black",size = 2,shape = 16) +
+  stat_summary(fun.y=mean, colour="black", geom="text", show.legend = FALSE, 
+               vjust=-3.0, aes( label=round(..y.., digits=3)))
+
+```
+
+# Mixed models
+
+```{r  include=FALSE}
+library(lme4)
+library(lmerTest)
+library(sjPlot)
+
+lmmdat <- gnet2_data
+stlmm <- lmmdat[is.na(test_quality),]
+tdlmm <- lmmdat[!(is.na(test_quality)),]
+```
+
+## Test phase
+
+### Models #1
+
+```{r  eval = TRUE, warning=FALSE, echo=FALSE}
+tdlmm$rt_resp <- NA
+tdlmm[response_test_response == "left", rt_resp := 0]
+tdlmm[response_test_response == "right", rt_resp := 1]
+tdlmm$rt_resp <- as.numeric(tdlmm$rt_resp)
+tdlmm$stimtype <- as.factor(tdlmm$stimtype)
+tdlmm$trial_quality <- as.factor(tdlmm$trial_quality)
+tdlmm$rt_corr <- as.numeric(tdlmm$rt_corr)
+
+logmr <- glmer(rt_resp ~ stimtype * test_quality + (1|workerId),
+               data = tdlmm,
+               family = binomial)
+summary(logmr)
+plot_model(logmr, type = "eff")
+plot_model(logmr, type = "int")
+
+logmr2 <- glmer(rt_resp ~ DTF * test_quality + (1|workerId),
+               data = tdlmm,
+               family = binomial)
+summary(logmr2)
+plot_model(logmr2, type = "eff")
+plot_model(logmr2, type = "int")
+
+logmr3 <- glmer(rt_resp ~ DTAF * test_quality + (1|workerId),
+               data = tdlmm,
+               family = binomial)
+summary(logmr3)
+plot_model(logmr3, type = "eff")
+plot_model(logmr3, type = "int")
+
+logmr4 <- glmer(rt_resp ~ DTAN * test_quality + (1|workerId),
+               data = tdlmm,
+               family = binomial)
+summary(logmr4)
+plot_model(logmr4, type = "eff")
+plot_model(logmr4, type = "int")
+
+logmr5 <- glmer(rt_resp ~ DTN_byPhase * test_quality + (1|workerId),
+               data = tdlmm,
+               family = binomial)
+summary(logmr5)
+plot_model(logmr5, type = "eff")
+plot_model(logmr5, type = "int")
+
+# logmr6 <- glmer(rt_resp ~ DTN * tq + (tq|workerId),
+#               data = tdlmm,
+#                family = binomial)
+# summary(logmr6)
+# plot_model(logmr6, type = "eff")$DTN
+# plot_model(logmr6, type = "eff")$tq
+# plot_model(logmr6, type = "int")
+
+tab_model(logmr, logmr2,logmr3,logmr4,logmr5,#logmr6,
+          # = c("Model 1", "Model 2", "Model 3", "Model 4"),
+          show.est = TRUE,
+          # show.ci = TRUE,
+          show.se = TRUE,
+          show.r2 = TRUE,
+          # show.adj.icc = TRUE,
+          # show.icc = FALSE,
+          # pred.labels =
+          show.aic = TRUE,
+          show.aicc = TRUE,
+          # show.std = TRUE,
+          transform = NULL)
+```
+
+### Models #2
+
+```{r  eval = TRUE, warning=FALSE, echo=FALSE}
+tdlmm$total_responses <- scale(tdlmm$total_responses)
+logmr <- glmer(rt_resp ~ total_responses + stimtype * test_quality + (1|workerId),
+               data = tdlmm,
+               family = binomial)
+summary(logmr)
+plot_model(logmr, type = "eff")
+plot_model(logmr, type = "int")
+
+logmr2 <- glmer(rt_resp ~ total_responses + DTF * test_quality + (1|workerId),
+               data = tdlmm,
+               family = binomial)
+summary(logmr2)
+plot_model(logmr2, type = "eff")
+plot_model(logmr2, type = "int")
+
+logmr3 <- glmer(rt_resp ~ total_responses + DTAF * test_quality + (1|workerId),
+               data = tdlmm,
+               family = binomial)
+summary(logmr3)
+plot_model(logmr3, type = "eff")
+plot_model(logmr3, type = "int")
+
+logmr4 <- glmer(rt_resp ~ total_responses + DTAN * test_quality + (1|workerId),
+               data = tdlmm,
+               family = binomial)
+summary(logmr4)
+plot_model(logmr4, type = "eff")
+plot_model(logmr4, type = "int")
+
+logmr5 <- glmer(rt_resp ~ total_responses + DTN_byPhase * test_quality + (1|workerId),
+               data = tdlmm,
+               family = binomial)
+summary(logmr5)
+plot_model(logmr5, type = "eff")
+plot_model(logmr5, type = "int")
+
+# logmr6 <- glmer(rt_resp ~ DTN * tq + (tq|workerId),
+#               data = tdlmm,
+#                family = binomial)
+# summary(logmr6)
+# plot_model(logmr6, type = "eff")$DTN
+# plot_model(logmr6, type = "eff")$tq
+# plot_model(logmr6, type = "int")
+
+tab_model(logmr, logmr2,logmr3,logmr4,logmr5,#logmr6,
+          # = c("Model 1", "Model 2", "Model 3", "Model 4"),
+          show.est = TRUE,
+          # show.ci = TRUE,
+          show.se = TRUE,
+          show.r2 = TRUE,
+          # show.adj.icc = TRUE,
+          # show.icc = FALSE,
+          # pred.labels =
+          show.aic = TRUE,
+          show.aicc = TRUE,
+          # show.std = TRUE,
+          transform = NULL)
+```

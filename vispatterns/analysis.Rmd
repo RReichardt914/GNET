@@ -1,0 +1,413 @@
+---
+title: "Visual patterns test analysis"
+output: html_document
+---
+```{r  include=FALSE}
+source("difference_innumbers.R")
+source("datproc.R")
+source("jkanal.R")
+
+library(ez)
+library(ggplot2)
+library(emmeans)
+library(DescTools)
+library(stats)
+library(afex)
+library(effsize)
+```
+
+# The study
+
+### Familiarization phase
+Participants see 5 stimuli repeated 8 times each. Stimuli consist of a 3x3 grid, with 5 random shapes (circle,triangle,square) placed randomly (any 9 cells) with random color (red,blue,yellow,green,orange,purple).
+
+### Study phase
+Participants see the 5 familiar stimuli 5 times each (25) and 50 novel stimuli. They have to judge if the current stimulus is one of the familiars. The novels differ to a differing degree from the familiars: there is 5x2 (two for each familiar) that is wholly different (diffarr). 5x2 that has the same placement of random shapes (sarr), 5x2 same arrangement and shapes (sarrsha), 5x2 same arrangement and colors (sarrcol) 5x2 same arrangement, shapes and colors (colors are randomized, thus, these are not the same as the familiars - sarrshacol). 
+
+### Test phase
+Participants see the novels from the study phase and 50 new stimuli (sarr - 10, sarrsha - 10, etc.). Participants have to signal if they have already seen the current stimulus or it is wholly new. They had the option to signal "maybe", but were asked to do this in moderation (maybe resp <= 20). These responses have been added to correct responses.
+
+## Participants
+
+The online task has been started by a total of `r nrow(ids)` participants.
+
+We excluded a total of `r fdrop` participants due to irregular data (incomplete runs, several runs).
+
+We also excluded some (`r dropbymiss`) participants as they missed more than `r misslimit` trials (mean + 2*sd of misses by participant).
+
+We also excluded those who recognized less than half of the prototypes in the study phase (`r dropbyst`). [inactive - this would drop 14 participants]
+
+We also excluded `r dropmaybes` participants as they overused "maybe" responses in the test phase (more than `r maybelimit`).
+
+Maybe responses [mean(±sd)] : `r mean(mayberesp$V1[mayberesp$workerId %in% fineids])` ± `r sd(mayberesp$V1[mayberesp$workerId %in% fineids])`
+
+This left a total of `r length(fineids)` participants (`r jkwid[jkwid$id %in% fineids, table(jkwid$gen == 1)]` females).
+
+The sample had a mean(±sd) age of `r jkwid[id %in% fineids, mean(age)]` ± `r jkwid[id %in% fineids, sd(age)]`.
+
+The histogram below shows the number of participants completing the task in a given hour of the day.
+
+```{r  eval = TRUE, warning=FALSE, echo=FALSE}
+# jkwid[jkwid$id %in% fineids, sum(jkwid$gen)] - for some reason this does not work
+ggplot(exptimes[id %in% fineids],aes(hour)) + geom_histogram() 
+```
+
+
+
+## Study phase:
+
+During the study phase, the participants see familiar and novel items.
+
+The original sample of `r length(fineids)` participants produced a mean (±sd) recognition rate of `r mean(study_dat$crrate[study_dat$type == "prototype"])` ± `r sd(study_dat$crrate[study_dat$type == "prototype"])` for familiar pictures.
+
+```{r  eval = TRUE, warning=FALSE, echo=FALSE}
+test <- t.test(study_dat$crrate[study_dat$type == "prototype"],
+               mu = 0.5,
+               alternative = "two.sided")
+cohend <- cohen.d(study_dat$crrate[study_dat$type == "prototype"],NA,
+                  paired = FALSE,conf.level=0.95, mu = 0.5)
+
+```
+
+The sample performed above chance levels, as a one sample t-test showed (t(`r test$parameter[[1]]`)=`r test$statistic[[1]]`, p = `r test$p.value`, Cohen's d = `r cohend$estimate`, 95% CI:`r cohend$conf.int[[1]]` - `r cohend$conf.int[[2]]`).
+
+We use an ANOVA to see if there is a difference in correct rejection for the different novels.
+```{r  eval = TRUE, warning=FALSE, echo=FALSE}
+# csak az újakra adott válaszok
+study_dat_news <- study_dat[type != "prototype"]
+# ezANOVA(study_dat_news, dv =  crrate, within = type, wid = workerId)
+a1 <- aov_ez("workerId", "crrate",
+             study_dat_news, within = "type")
+a1
+m3 <- emmeans(a1, ~ type)
+pairs(m3)
+contrast(m3, "poly")
+ggplot(study_dat_news, aes(x=type, y=crrate, color = type)) + 
+  geom_jitter(width=0.2, alpha=0.2) +
+  stat_summary(geom = "errorbar", fun.data = mean_se, width = 0.2) +
+  stat_summary(geom = "point",fun.y = "mean",col = "black",size = 2,shape = 16) +
+  stat_summary(fun.y=mean, colour="black", geom="text", show.legend = FALSE, 
+               vjust=-3.0, aes( label=round(..y.., digits=3))) +
+  scale_x_discrete(labels=c("diffarr" = "novel layout", "sarr" = "novel shapes & colors",
+                              "sarrcol" = "novel shapes", "sarrsha" = "novel colors", "sarrshacol" = "novel fill"))
+```
+
+## Test phase:
+
+This phase tests the learning that has occurred during the study phase. If the participants learned the novels in the study phase, their responses should differ for the stimuli that they have already seen during the study phase (familiars) and those that they see for the first time during the test phase (novels). We also let the participants to choose "maybe" by pressing the down arrow, but asked them not to overuse this response (maybe resp <= 50). We added these responses as correct responses to both stimulus categories.
+
+```{r  warning=FALSE, echo=FALSE}
+# BY RESPONSE TYPE
+# old
+test_dat_c_tq <- test_dat_c[,sum(rowCount),by=.(workerId,tq,rkey)]
+print("A t-test to compare the number of old responses btwn old and new stim")
+# print(t.test(test_dat_c_tq$V1[test_dat_c_tq$rkey == "left" & test_dat_c_tq$tq == "fam"],test_dat_c_tq$V1[test_dat_c_tq$rkey == "left" & test_dat_c_tq$tq == "new"], paired=TRUE))
+
+a <- test_dat_c_tq$V1[test_dat_c_tq$rkey == "left" & test_dat_c_tq$tq == "fam"]
+b <- test_dat_c_tq$V1[test_dat_c_tq$rkey == "left" & test_dat_c_tq$tq == "new"]
+print(t.test(a,b,paired = TRUE))
+print(cohen.d(a,b,paired = TRUE,conf.level=0.95))
+d <- with(test_dat_c_tq, V1[tq == "fam" & rkey == "left"] - V1[tq == "new" & rkey == "left"])
+print(shapiro.test(d))
+
+
+ggplot(test_dat_c_tq[rkey == "left"], aes(x=tq, y=V1))+
+  geom_jitter(width=0.2, alpha=0.2) +
+  stat_summary(geom = "errorbar", fun.data = mean_se, width = 0.2) +
+  stat_summary(geom = "point",fun.y = "mean",col = "black",size = 2,shape = 16) +
+  stat_summary(fun.y=mean, colour="black", geom="text", show.legend = FALSE, 
+               vjust=-3.0, aes( label=round(..y.., digits=3))) +
+  scale_x_discrete(labels=c("diffarr" = "novel layout", "sarr" = "novel shapes & colors",
+                              "sarrcol" = "novel shapes", "sarrsha" = "novel colors", "sarrshacol" = "novel fill"))
+
+sr <- test_dat[tq == "fam"]
+nr <- test_dat[tq == "new"]
+odiffr <- merge(sr,nr,by=c("workerId","type"))
+odiffr[,CorrectedRecognitions:=corr.x-fa.y]
+odiffr[,CorrectedRejections:=corr.y-fa.x]
+odiffr[,OCCategorizations := CorrectedRecognitions + CorrectedRejections]
+
+print("ANOVA with correct recognition minus false alarm by category")
+a1 <- aov_ez("workerId", "CorrectedRecognitions",
+             odiffr, within = c("type"))
+a1
+m3 <- emmeans(a1, ~ type)
+pairs(m3)
+posthoc <- pairs(m3)
+contrast(m3, "poly")
+
+ggplot(odiffr, aes(x=type, y=CorrectedRecognitions, color=type))+
+  geom_jitter(width=0.2, alpha=0.2) +
+  stat_summary(geom = "errorbar", fun.data = mean_se, width = 0.2) +
+  stat_summary(geom = "point",fun.y = "mean",col = "black",size = 2,shape = 16) +
+  stat_summary(fun.y=mean, colour="black", geom="text", show.legend = FALSE, 
+               vjust=-3.0, aes( label=round(..y.., digits=3))) +
+  scale_x_discrete(labels=c("diffarr" = "novel layout", "sarr" = "novel shapes & colors",
+                              "sarrcol" = "novel shapes", "sarrsha" = "novel colors", "sarrshacol" = "novel fill"))
+
+print("ANOVA with correct rejection minus false alarm by category")
+a1 <- aov_ez("workerId", "CorrectedRejections",
+             odiffr, within = c("type"))
+a1
+m3 <- emmeans(a1, ~ type)
+pairs(m3)
+posthoc <- pairs(m3)
+contrast(m3, "poly")
+
+ggplot(odiffr, aes(x=type, y=CorrectedRejections, color=type))+
+  geom_jitter(width=0.2, alpha=0.2) +
+  stat_summary(geom = "errorbar", fun.data = mean_se, width = 0.2) +
+  stat_summary(geom = "point",fun.y = "mean",col = "black",size = 2,shape = 16) +
+  stat_summary(fun.y=mean, colour="black", geom="text", show.legend = FALSE, 
+               vjust=-3.0, aes( label=round(..y.., digits=3))) +
+  scale_x_discrete(labels=c("diffarr" = "novel layout", "sarr" = "novel shapes & colors",
+                              "sarrcol" = "novel shapes", "sarrsha" = "novel colors", "sarrshacol" = "novel fill"))
+
+print("ANOVA with corrected differentiation score by category ((crecog-fa)+(creject-fa))")
+a1 <- aov_ez("workerId", "OCCategorizations",
+             odiffr, within = c("type"))
+a1
+m3 <- emmeans(a1, ~ type)
+pairs(m3)
+posthoc <- pairs(m3)
+contrast(m3, "poly")
+
+ggplot(odiffr, aes(x=type, y=OCCategorizations, color=type))+
+  geom_jitter(width=0.2, alpha=0.2) +
+  stat_summary(geom = "errorbar", fun.data = mean_se, width = 0.2) +
+  stat_summary(geom = "point",fun.y = "mean",col = "black",size = 2,shape = 16) +
+  stat_summary(fun.y=mean, colour="black", geom="text", show.legend = FALSE, 
+               vjust=-3.0, aes( label=round(..y.., digits=3))) +
+  scale_x_discrete(labels=c("diffarr" = "novel layout", "sarr" = "novel shapes & colors",
+                              "sarrcol" = "novel shapes", "sarrsha" = "novel colors", "sarrshacol" = "novel fill"))
+
+```
+
+# Mixed models
+
+## The metrics
+
+### DTF - Difference To corresponding Familiar picture
+All pictures are compared to a familiar. The number of differences between the three vectors of the pictures yields a difference score.
+
+### DTAF - mean Difference To All Familiars
+We calculate the difference from all prototypes and take the mean for each picture in the set.
+
+### DTAN - mean Difference To All other Novels in the same category
+We calculate the differences between each pair of pictures and then take the mean of these differences (19 comparisons per stim).
+
+### DTN_byPhase - mean Difference to Novels in the same category per study/test phase
+We calculate the differences between each pair of pictures and then take the mean of these differences (9 comparisons per stim).
+
+### DTPPm - mean Diff To Previously seen Pictures
+We compare the current picture to all previously seen pictures (25 in first study trial, 26 in 2nd, and so on ..). We take the mean.
+
+```{r  include=FALSE}
+library(lme4)
+library(lmerTest)
+library(sjPlot)
+
+# we use a preprocessed DT which holds the data of the 59 participants that were not thrown out
+lmmdat <- as.data.table(read.csv("filtereddata_pilot1_alldiffind.csv"))
+
+stlmm <- lmmdat[workerId %in% fineids & tq == "x",]
+stlmm <- stlmm[,c("datetime","response","response_time","stim",
+                  "workerId","st_corr","type","tq","DTF","DTAF","DTAN","DTN_byPhase",
+                  "stimpresseq","DTPPm","DTPPsd")]
+
+
+tdlmm <- lmmdat[workerId %in% fineids & tq != "x",]
+tdlmm <- tdlmm[,c("datetime","response","response_time","stim",
+                  "workerId","type","tq","DTF",
+                  "DTAF","DTAN","DTN_byPhase","stimpresseq","DTPPm","DTPPsd")]
+tdlmm$rt_corr <- 0
+tdlmm[tq == "new" & response %in% c("down","right"),rt_corr := 1]
+tdlmm[tq == "fam" & response %in% c("down","left"),rt_corr := 1]
+
+tdlmm[response == "None", response := NA]
+
+t2lmm <- merge(stlmm,tdlmm,by=c("datetime","stim",
+                  "workerId","type","DTF","DTAF","DTAN","DTN_byPhase"))
+t2lmm <- t2lmm[,c( "datetime","stim","workerId","type","DTF","DTAF","DTAN","DTN_byPhase",
+                   "response.x","response_time.x","st_corr","stimpresseq.x","DTPPm.x",
+                   "DTPPsd.x","response.y","response_time.y","tq.y","stimpresseq.y","DTPPm.y",
+                   "DTPPsd.y","rt_corr")]
+colnames(t2lmm) <- c("datetime","stim","workerId","type","DTF","DTAF","DTAN","DTN_byPhase",
+                     "st_response","st_response_time","st_corr","st_seqnr","st_DTPPm","st_DTPPsd",
+                     "rt_response","rt_response_time","tq","rt_seqnr","rt_DTPPm","rt_DTPPsd",
+                     "rt_corr")
+```
+
+## Study phase
+
+With these models i tried to assess which difference index explains familiar v novel distinction in study phase the best. As far as i understand, the model with the smallest AIC fits best to our data, which means that the mean difference from the corresponding familiar worked best here. The models all show, that the more different pictures are categorized with the highest efficacy.
+
+```{r  eval = TRUE, warning=FALSE, echo=FALSE}
+# 1St model
+logmr <- glmer(st_corr ~ factor(type) + (1|workerId),
+               data = stlmm,
+               family = binomial)
+summary(logmr)
+plot_model(logmr, type = "eff")
+# 2Nd model
+logmr2 <- glmer(st_corr ~ DTF + (1|workerId),
+               data = stlmm,
+               family = binomial)
+summary(logmr2)
+plot_model(logmr2, type = "eff")
+# 3Rd model
+logmr3 <- glmer(st_corr ~ DTAF + (1|workerId),
+               data = stlmm,
+               family = binomial)
+summary(logmr3)
+plot_model(logmr3, type = "eff")
+# 4th model
+logmr4 <- glmer(st_corr ~ DTAN + (1|workerId),
+               data = stlmm,
+               family = binomial)
+summary(logmr4)
+plot_model(logmr4, type = "eff")
+# 5th model
+logmr5 <- glmer(st_corr ~ DTN_byPhase + (1|workerId),
+               data = stlmm,
+               family = binomial)
+summary(logmr5)
+plot_model(logmr5, type = "eff")
+# 6th model
+logmr6 <- glmer(st_corr ~ DTPPm + (1|workerId),
+               data = stlmm,
+               family = binomial)
+summary(logmr6)
+plot_model(logmr6, type = "eff")
+
+tab_model(logmr, logmr2,logmr3,logmr4,logmr5,logmr6,
+          # = c("Model 1", "Model 2", "Model 3", "Model 4"),
+          show.est = TRUE,
+          # show.ci = TRUE,
+          show.se = TRUE,
+          show.r2 = TRUE,
+          # show.adj.icc = TRUE,
+          # show.icc = FALSE,
+          # pred.labels =
+          show.aic = TRUE,
+          show.aicc = TRUE,
+          # show.std = TRUE,
+          transform = NULL)
+```
+
+## Test phase
+
+Logistic mixed regression for the test phase. Does difference from prototypes or familiarity/novelty have an effect on correct categorization in the test phase?
+
+```{r  eval = TRUE, warning=FALSE, echo=FALSE}
+
+logmr <- glmer(rt_corr ~ type * tq + (tq|workerId),
+               data = tdlmm,
+               family = binomial)
+summary(logmr)
+plot_model(logmr, type = "eff")$type
+plot_model(logmr, type = "eff")$tq
+plot_model(logmr, type = "int")
+
+logmr2 <- glmer(rt_corr ~ DTF * tq + (tq|workerId),
+               data = tdlmm,
+               family = binomial)
+summary(logmr2)
+plot_model(logmr2, type = "eff")$DTF
+plot_model(logmr2, type = "eff")$tq
+plot_model(logmr2, type = "int")
+
+logmr3 <- glmer(rt_corr ~ DTAF * tq + (tq|workerId),
+               data = tdlmm,
+               family = binomial)
+summary(logmr3)
+plot_model(logmr3, type = "eff")$DTAF
+plot_model(logmr3, type = "eff")$tq
+plot_model(logmr3, type = "int")
+
+logmr4 <- glmer(rt_corr ~ DTAN * tq + (tq|workerId),
+               data = tdlmm,
+               family = binomial)
+summary(logmr4)
+plot_model(logmr4, type = "eff")$DTAN
+plot_model(logmr4, type = "eff")$tq
+plot_model(logmr4, type = "int")
+
+logmr5 <- glmer(rt_corr ~ DTN_byPhase * tq + (tq|workerId),
+               data = tdlmm,
+               family = binomial)
+summary(logmr5)
+plot_model(logmr5, type = "eff")$DTN_byPhase
+plot_model(logmr5, type = "eff")$tq
+plot_model(logmr5, type = "int")
+
+logmr6 <- glmer(rt_corr ~ DTPPm * tq + (tq|workerId),
+               data = tdlmm,
+               family = binomial)
+summary(logmr6)
+plot_model(logmr6, type = "eff")$DTPPm
+plot_model(logmr6, type = "eff")$tq
+plot_model(logmr6, type = "int")
+
+tab_model(logmr, logmr2,logmr3,logmr4,logmr5,logmr6,
+          # = c("Model 1", "Model 2", "Model 3", "Model 4"),
+          show.est = TRUE,
+          # show.ci = TRUE,
+          show.se = TRUE,
+          show.r2 = TRUE,
+          # show.adj.icc = TRUE,
+          # show.icc = FALSE,
+          # pred.labels =
+          show.aic = TRUE,
+          show.aicc = TRUE,
+          # show.std = TRUE,
+          transform = NULL)
+
+```
+
+```{r  eval = TRUE, warning=FALSE, echo=FALSE}
+# cols <- colnames(t2lmm)
+# cols[cols == "tq"] <- "trial_quality"
+# cols[cols == "cr"] <- "correct_response"
+# cols[cols == "df"] <- "difference_from_fams"
+# colnames(t2lmm) <- cols
+# 
+# logmr <- glmer(correct_response ~
+#                  difference_from_fams * study_rt * study_cr +
+#                  (1|workerId),
+#                data = t2lmm,
+#                family = binomial)
+# summary(logmr)
+# plot_model(logmr, type = "eff")
+# plot_model(logmr, type = "int")
+# 
+# logmr2 <- glmer(correct_response ~
+#                  difference_from_fams * study_rt * study_cr +
+#                  (1|workerId) + (1|difference_from_fams),
+#                data = t2lmm,
+#                family = binomial)
+# summary(logmr2)
+# plot_model(logmr2, type = "eff")
+# plot_model(logmr2, type = "int")
+# 
+# tab_model(logmr,logmr2,
+#           # = c("Model 1", "Model 2", "Model 3", "Model 4"),
+#           show.est = TRUE,
+#           # show.ci = TRUE,
+#           show.se = TRUE,
+#           show.r2 = TRUE,
+#           # show.adj.icc = TRUE,
+#           # show.icc = FALSE,
+#           # pred.labels =
+#           show.aic = TRUE,
+#           show.aicc = TRUE,
+#           # show.std = TRUE,
+#           transform = NULL)
+
+```
+
+The difference in correct recognitions and correct rejections between categories is due to the fact that they are more or less similar to the prototypes (thus this may be the effect of the familiarization phase which we also saw in the study phase).
+
+During the task the participants generate predictions as to what happens next (not due to the instructions but automatically). Those stimuli that are most different from most of the stimuli should be remembered better.
+
+By calculating a the number of correct recognitions (old - seen) and correct rejections (new - not seen) and correcting these numbers with the respective false alarm rates (new - seen; old - not seen) and adding these we get a number that reflects how well the participants distinguished pictures in the test phase. These numbers are very low (below 5 which translates to a rating of about 0.25 - the corrected rate of correct categorizations - max would be 20 for a category), which suggests that the task was hard. Yet there are differences in this number between the categories which shows that some categories were more likely to be correctly categorized. We would expect that diffarf would be the highest, while sharrshacol the lowest, with a gradual decrease through the other categories. This is partly supported by the data, but the experiment should be repeated with an easier stimulus set.

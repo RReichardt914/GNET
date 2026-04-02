@@ -1,0 +1,44 @@
+"0","source(""difference_innumbers.R"")"
+"0","source(""gnet_v2_jd_processdata.R"")"
+"0",""
+"0","library(ez)"
+"0","library(ggplot2)"
+"0","library(emmeans)"
+"0","library(DescTools)"
+"2","
+Attaching package: ‘DescTools’
+
+"
+"2","The following object is masked from ‘package:data.table’:
+
+    %like%
+
+"
+"0","library(stats)"
+"0","library(afex)"
+"2","Loading required package: lme4
+"
+"2","Loading required package: Matrix
+"
+"2","************
+Welcome to afex. For support visit: http://afex.singmann.science/
+"
+"2","- Functions for ANOVAs: aov_car(), aov_ez(), and aov_4()
+- Methods for calculating p-values with mixed(): 'S', 'KR', 'LRT', and 'PB'
+- 'afex_aov' and 'mixed' objects can be passed to emmeans() for follow-up tests
+- NEWS: emmeans() for ANOVA models now uses model = 'multivariate' as default.
+- Get and set global package options with: afex_options()
+- Set orthogonal sum-to-zero contrasts globally: set_sum_contrasts()
+- For example analyses see: browseVignettes(""afex"")
+************
+"
+"2","
+Attaching package: ‘afex’
+
+"
+"2","The following object is masked from ‘package:lme4’:
+
+    lmer
+
+"
+"0","library(effsize)"

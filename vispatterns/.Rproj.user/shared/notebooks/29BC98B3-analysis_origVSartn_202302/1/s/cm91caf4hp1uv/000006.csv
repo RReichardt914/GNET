@@ -1,0 +1,4 @@
+"0",""
+"0","ndf <- a1$anova_table$`num Df`"
+"0","ddf <- a1$anova_table$`den Df`"
+"0","p <- a1$anova_table$`Pr(>F)`"

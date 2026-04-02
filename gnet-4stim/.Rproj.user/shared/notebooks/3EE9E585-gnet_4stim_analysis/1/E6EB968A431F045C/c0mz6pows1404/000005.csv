@@ -1,0 +1,18 @@
+"0","# calculating main performance indices
+source(""Proc_gnet4s_orig.R"")
+"
+"2","Warning in as.data.table.list(x, keep.rownames = keep.rownames, check.names = check.names,  :"
+"2","
+ "
+"2"," Item 2 has 2 rows but longest item has 7; recycled with remainder.
+"
+"0","# calculating main performance indices"
+"0","source(""Proc_gnet4s_orig.R"")"
+"2","Warning in as.data.table.list(x, keep.rownames = keep.rownames, check.names = check.names,  :"
+"2","
+ "
+"2"," Item 2 has 2 rows but longest item has 7; recycled with remainder.
+"
+"0","source(""Proc_gnet4s_delay.R"")"
+"0","source(""Proc_gnet4s_artn.R"")"
+"0","source(""Proc_gnet4s_delart.R"")"

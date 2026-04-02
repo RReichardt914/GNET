@@ -1,0 +1,13 @@
+"0","# some neptun ids are messed up
+for (i in 1:nrow(GNET_pilot_filtered)){
+  if (GNET_pilot_filtered$multichar_knowresp[i] == ""capsmlcqiycaps""){
+    GNET_pilot_filtered$multichar_knowresp[i] := ""mlcqiy""
+  }
+  if (GNET_pilot_filtered$multichar_knowresp[i] == ""capsb2capsd8capsb2""){
+    GNET_pilot_filtered$multichar_knowresp[i] := ""b2d8b2""
+  }
+}
+"
+"2","Error in `:=`(GNET_pilot_filtered$multichar_knowresp[i], ""mlcqiy"") : 
+  Check that is.data.table(DT) == TRUE. Otherwise, := and `:=`(...) are defined for use in j, once only and in particular ways. See help("":="").
+"

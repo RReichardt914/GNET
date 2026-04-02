@@ -1,0 +1,27 @@
+{
+    "id": "42A36636",
+    "path": "~/gnet-4stim/immersion_RTtest.R",
+    "project_path": "immersion_RTtest.R",
+    "type": "r_source",
+    "hash": "1688327939",
+    "contents": "",
+    "dirty": false,
+    "created": 1757059680011.0,
+    "source_on_save": false,
+    "relative_order": 2,
+    "properties": {
+        "tempName": "Untitled3",
+        "source_window_id": "",
+        "Source": "Source",
+        "cursorPosition": "38,0",
+        "scrollLine": "26"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1758637435,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1758637435903,
+    "read_only": false,
+    "read_only_alternatives": []
+}

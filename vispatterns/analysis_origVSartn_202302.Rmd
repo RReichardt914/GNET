@@ -1,0 +1,736 @@
+---
+title: "Graded Novelty Encoding Task - original vs narrative"
+output:
+  html_document:
+    toc: true
+    toc_float: 
+      collapsed: false
+    toc_depth: 4
+---
+# The paradigm
+
+We compare the results of the original GNET study with the contextualized one.
+
+```{r  include=FALSE}
+library(ez)
+library(ggplot2)
+library(emmeans)
+library(DescTools)
+library(stats)
+library(afex)
+library(effsize)
+library(lubridate)
+library(Hmisc)
+
+# this line can be switched to
+# difference_indices <- read.csv("DiffIndices.csv)
+# since 2023.12.05.
+source("difference_innumbers_bydim.R")
+
+source("datproc_1strun_bydim.R")
+source("datproc_2ndrun_bydim.R")
+GNET_pilot_alldata <- rbind(GNET_pilot_RUN1_alldata,GNET_pilot_RUN2_alldata)
+rm(GNET_pilot_RUN1_alldata,GNET_pilot_RUN2_alldata)
+
+# EXCLUSIONs ####
+
+# extract the number of all separate runs - allruns
+allruns <- unique(GNET_pilot_alldata[,c("studyResultId","workerId")])
+allruns <- na.omit(allruns)
+allruns <- nrow(allruns)
+
+# REMOVE INSUFFICIENT DATA
+ids <- GNET_pilot_alldata[, .(rowCount = .N), by = c("workerId","studyResultId","datetime")]
+ids[,RUNIDENTIFIER := paste(ids$workerId, "_", ids$studyResultId, sep="")]
+ids <- ids[rowCount >= 175]
+GNET_pilot_alldata <-
+  GNET_pilot_alldata[workerId %in% ids$workerId & studyResultId %in% ids$studyResultId,]
+GNET_pilot_alldata <- 
+  GNET_pilot_alldata[!duplicated(GNET_pilot_alldata),]
+completeruns <- nrow(ids)
+
+# REMOVE TOO MUCH MISSED RESPONSES
+ResponsesSummary <- GNET_pilot_alldata[, .(rowCount = .N), by = .(workerId,studyResultId,type,tq,response)]
+MissedResSummary <- ResponsesSummary[response == "None", sum(rowCount),by = .(workerId,studyResultId)]
+MissedResSummary <- MissedResSummary[V1 < 66,]
+GNET_pilot_alldata <-
+  GNET_pilot_alldata[(workerId %in% MissedResSummary$workerId) & (studyResultId %in% MissedResSummary$studyResultId),]
+# Nr of exclusions due to misses
+ExcludeMisses <- nrow(ids) - nrow(MissedResSummary)
+
+# túl alacsony prototype recog rate a study alatt kipottyan
+StudySummary <- GNET_pilot_alldata[is.na(count_test_sequence) & response == "left" & type == "prototype", .N/25, by=.(workerId,studyResultId)]
+StudyFA <- GNET_pilot_alldata[is.na(count_test_sequence) & response == "left" & type != "prototype", .N/50, by=.(workerId,studyResultId)]
+StudyCR <- merge(StudySummary, StudyFA,by=c("workerId","studyResultId"), all = TRUE)
+colnames(StudyCR) <- c("workerId","studyResultId","R","FA")
+StudyCR[is.na(FA), FA:=0]
+StudyCR[,CR := R - FA]
+
+StudyBinom <- GNET_pilot_alldata[is.na(count_test_sequence) & response == "left",.(workerId,studyResultId,response,type),]
+StudyBinom$RespBinomial <- 0
+StudyBinom[type == "prototype", RespBinomial := 1]
+handles <- unique(StudyBinom[,.(workerId,studyResultId)])
+StudyCR$CI_lower <- 0
+StudyCR$CI_upper <- 0
+for (i in 1:nrow(handles)){
+  tempBinData <- StudyBinom[workerId == handles$workerId[i] & studyResultId == handles$studyResultId[i],RespBinomial]
+  confint <- binconf(x=sum(tempBinData), n=length(tempBinData))
+  StudyCR[workerId == handles$workerId[i] & studyResultId == handles$studyResultId[i], CI_lower := confint[2]]
+  StudyCR[workerId == handles$workerId[i] & studyResultId == handles$studyResultId[i], CI_upper := confint[3]]
+}
+
+# exclusion crit based on corrected recog rate
+StudySummary <- StudyCR[CR > 0] # 0.3 is the 20th percentile
+# exclusion crit based on uncorrected recog rate
+# StudySummary <- StudySummary[V1 > 0.5]
+StudySummary <- StudyCR[CI_lower > 0.33]
+ExcludePrototypeRecog <- nrow(MissedResSummary) - nrow(StudySummary)
+GNET_pilot_alldata <- GNET_pilot_alldata[(workerId %in% StudySummary$workerId) & (studyResultId %in% MissedResSummary$studyResultId),]
+
+# túl sok maybe response kipottyan
+TestSummary <- GNET_pilot_alldata[!is.na(count_test_sequence) & response == "down", .N, by=.(workerId,studyResultId)]
+TestSummary <- TestSummary[N < 50]
+ExcludeMaybeResp <- nrow(StudySummary) - nrow(TestSummary)
+GNET_pilot_alldata <-
+  GNET_pilot_alldata[(workerId %in% TestSummary$workerId) & (studyResultId %in% MissedResSummary$studyResultId),]
+
+GNET_pilot_filtered <- GNET_pilot_alldata
+
+rm(GNET_pilot_alldata,ids,MissedResSummary,ResponsesSummary,StudySummary)
+#### exclude those cases where a participant completed multiple runs (only first is kept)
+multipleruns <- GNET_pilot_filtered[,sum(DTF),by=.(workerId,studyResultId,datetime)]
+multipleruns$datetime <- mdy_hms(multipleruns$datetime)
+mrs <- c(multipleruns$workerId[duplicated(multipleruns$workerId)])
+for (i in 1:length(mrs)){
+  temp <- multipleruns[workerId == mrs[i]]
+  first <- min(temp$datetime)
+  temp <- temp[datetime != first,]
+  GNET_pilot_filtered <- GNET_pilot_filtered[!(workerId %in% temp & studyResultId %in% temp),]
+}
+rm(temp,first,multipleruns)
+ExcludeMRuns <- length(mrs)
+rm(mrs)
+#####
+```
+
+# Participants
+
+## Original GNET
+
+The online task has been started a total of `r allruns` times.
+
+We excluded a total of `r allruns - completeruns` runs due to irregular data leaving `r completeruns` in the analysis.
+
+We excluded some (`r ExcludeMisses`) runs as they missed more than 66 of 175 trials.
+
+We also excluded `r ExcludePrototypeRecog` runs in which the participant produced less than 0.3 corrected recognition rate for familiars in the study phase.
+
+We also excluded `r ExcludeMaybeResp` participants as they overused "maybe" responses in the test phase (more than 25).
+
+We also excluded `r ExcludeMRuns` run(s) as only the first run is kept in the analysis from one participant.
+
+This left a total of `r nrow(GNET_pilot_filtered)/175` participants.
+
+Maybe responses [mean(±sd)] : `r mean(TestSummary$N)` ± `r sd(TestSummary$N)`
+
+```{r  include=FALSE}
+source("registerdata_in.R")
+
+jkwid <- jkwid[X.U.FEFF.id %in% TestSummary$workerId]
+registernmail <- registernmail[X.U.FEFF.id %in% TestSummary$workerId]
+
+jkwid <- jkwid[,c("age","gen")]
+registernmail <- registernmail[,c("age","gen")]
+
+demog <- rbind(jkwid,registernmail)
+rm(jkwid,registernmail)
+
+```
+
+The sample had a mean(±sd) age of `r mean(demog$age)` ± `r sd(demog$age)`.
+
+The sample contained `r sum(demog$gen)` women.
+
+## Art narrative
+
+```{r  include=FALSE}
+source("datproc_artnarr_bydim.R")
+GNET_pilot_alldata <- GNET_artn_alldata
+rm(GNET_artn_alldata)
+# EXCLUSIONs ####
+
+# extract the number of all separate runs - allruns
+allruns <- unique(GNET_pilot_alldata[,c("multichar_knowresp","sessionid")])
+allruns <- na.omit(allruns)
+allruns <- nrow(allruns)
+
+# REMOVE INSUFFICIENT DATA
+ids <- GNET_pilot_alldata[, .(rowCount = .N), by = c("multichar_knowresp","sessionid")]
+ids[,RUNIDENTIFIER := paste(ids$multichar_knowresp, "_", ids$sessionid, sep="")]
+ids <- ids[rowCount >= 175]
+GNET_pilot_alldata <-
+  GNET_pilot_alldata[multichar_knowresp %in% ids$multichar_knowresp & sessionid %in% ids$sessionid,]
+GNET_pilot_alldata <- 
+  GNET_pilot_alldata[!duplicated(GNET_pilot_alldata),]
+completeruns <- nrow(ids)
+
+# REMOVE TOO MUCH MISSED RESPONSES
+ResponsesSummary <- GNET_pilot_alldata[, .(rowCount = .N), by = .(multichar_knowresp,sessionid,type,tq,response)]
+MissedResSummary <- ResponsesSummary[response == "None", sum(rowCount),by = .(multichar_knowresp,sessionid)]
+MissedResSummary <- MissedResSummary[V1 < 66,]
+GNET_pilot_alldata <-
+  GNET_pilot_alldata[(multichar_knowresp %in% MissedResSummary$multichar_knowresp) & (sessionid %in% MissedResSummary$sessionid),]
+# Nr of exclusions due to misses
+ExcludeMisses <- nrow(ids) - nrow(MissedResSummary)
+
+# túl alacsony prototype recog rate a study alatt kipottyan
+StudySummary <- GNET_pilot_alldata[is.na(count_test_sequence) & response == "left" & type == "prototype", .N/25, by=.(multichar_knowresp,sessionid)]
+StudyFA <- GNET_pilot_alldata[is.na(count_test_sequence) & response == "left" & type != "prototype", .N/50, by=.(multichar_knowresp,sessionid)]
+StudyCR <- merge(StudySummary, StudyFA,by=c("multichar_knowresp","sessionid"), all = TRUE)
+colnames(StudyCR) <- c("multichar_knowresp","sessionid","R","FA")
+StudyCR[is.na(FA), FA:=0]
+StudyCR[,CR := R - FA]
+
+StudyBinom <- GNET_pilot_alldata[is.na(count_test_sequence) & response == "left",.(multichar_knowresp,sessionid,response,type),]
+StudyBinom$RespBinomial <- 0
+StudyBinom[type == "prototype", RespBinomial := 1]
+handles <- unique(StudyBinom[,.(multichar_knowresp,sessionid)])
+StudyCR$CI_lower <- 0
+StudyCR$CI_upper <- 0
+for (i in 1:nrow(handles)){
+  tempBinData <- StudyBinom[multichar_knowresp == handles$multichar_knowresp[i] & sessionid == handles$sessionid[i],RespBinomial]
+  confint <- binconf(x=sum(tempBinData), n=length(tempBinData))
+  StudyCR[multichar_knowresp == handles$multichar_knowresp[i] & sessionid == handles$sessionid[i], CI_lower := confint[2]]
+  StudyCR[multichar_knowresp == handles$multichar_knowresp[i] & sessionid == handles$sessionid[i], CI_upper := confint[3]]
+}
+
+# exclusion crit based on corrected recog rate
+StudySummary <- StudyCR[CR > 0] # 0.3 is the 20th percentile
+# exclusion crit based on uncorrected recog rate
+# StudySummary <- StudySummary[V1 > 0.5]
+StudySummary <- StudyCR[CI_lower > 0.33]
+ExcludePrototypeRecog <- nrow(MissedResSummary) - nrow(StudySummary)
+GNET_pilot_alldata <- GNET_pilot_alldata[(multichar_knowresp %in% StudySummary$multichar_knowresp) & (sessionid %in% MissedResSummary$sessionid),]
+
+# túl sok maybe response kipottyan
+TestSummary <- GNET_pilot_alldata[!is.na(count_test_sequence) & response == "down", .N, by=.(multichar_knowresp,sessionid)]
+TestSummary <- TestSummary[N < 50]
+ExcludeMaybeResp <- nrow(StudySummary) - nrow(TestSummary)
+GNET_pilot_alldata <-
+  GNET_pilot_alldata[(multichar_knowresp %in% TestSummary$multichar_knowresp) & (sessionid %in% MissedResSummary$sessionid),]
+
+GNET_artn_filtered <- GNET_pilot_alldata
+
+rm(GNET_pilot_alldata,ids,MissedResSummary,ResponsesSummary,StudySummary)
+
+# some neptun ids are messed up
+for (i in 1:nrow(GNET_artn_filtered)){
+  if (GNET_artn_filtered$multichar_knowresp[i] == "capsmlcqiycaps"){
+    GNET_artn_filtered$multichar_knowresp[i] <- "mlcqiy"
+  }
+  if (GNET_artn_filtered$multichar_knowresp[i] == "capsb2capsd8capsb2"){
+    GNET_artn_filtered$multichar_knowresp[i] <- "b2d8b2"
+  }
+}
+
+#####
+```
+
+```{r  include=FALSE}
+source("regdata-artnarr_in.R")
+
+# we need to remove the data where personal info is not available
+jkn <- unique(tolower(jkwid$NEPTUN))
+bdn <- unique(GNET_artn_filtered$multichar_knowresp)
+# this gives usable neptuns
+KEEP <- bdn[bdn %in% jkn]
+rm(jkn,bdn)
+# only keep these in both data tables
+GNET_artn_filtered <- GNET_artn_filtered[multichar_knowresp %in% KEEP]
+jkwid <- jkwid[tolower(NEPTUN) %in% KEEP]
+jkwid <- jkwid[!duplicated(jkwid$NEPTUN)]
+
+##### this section must be removed!! --- 2023.01.30. temporary
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+duplicates <- sample(unique(GNET_artn_filtered$multichar_knowresp),61)
+GNETextra <- GNET_artn_filtered[multichar_knowresp %in% duplicates]
+for (i in 1:61){
+  for (j in 1:175){
+    if (i < 10){
+      GNETextra$multichar_knowresp[((i-1)*175)+j] <- paste("fake0",i,sep = "")
+    } else {
+      GNETextra$multichar_knowresp[((i-1)*175)+j] <- paste("fake",i,sep = "")
+    }
+  }
+}
+GNET_artn_filtered <- rbind(GNET_artn_filtered,GNETextra)
+
+duplicates <- sample(unique(jkwid$NEPTUN),61)
+jkwidEXTRA <- jkwid[NEPTUN %in% duplicates]
+for (i in 1:61){
+  if (i < 10){
+      jkwidEXTRA$NEPTUN[i] <- paste("fake0",i,sep = "")
+    } else {
+      jkwidEXTRA$NEPTUN[i] <- paste("fake",i,sep = "")
+    }
+}
+jkwid <- rbind(jkwid,jkwidEXTRA)
+
+# to this point!!! --------------------------------------------------
+
+demog <- jkwid[,c("age","gen")]
+demog[gen == "Nő", gen := 1]
+demog[gen == "Férfi", gen := 0]
+demog$gen <- as.numeric(demog$gen)
+```
+
+The online task has been started a total of `r allruns` times.
+
+We excluded a total of `r allruns - completeruns` runs due to irregular data leaving `r completeruns` in the analysis.
+
+We excluded some (`r ExcludeMisses`) runs as they missed more than 66 of 175 trials.
+
+We also excluded `r ExcludePrototypeRecog` runs in which the participant produced less than 0.3 corrected recognition rate for familiars in the study phase.
+
+We also excluded `r ExcludeMaybeResp` participants as they overused "maybe" responses in the test phase (more than 25).
+
+This left a total of `r nrow(GNET_artn_filtered)/175` participants.
+
+Maybe responses [mean(±sd)] : `r mean(TestSummary$N)` ± `r sd(TestSummary$N)`
+
+The sample had a mean(±sd) age of `r mean(demog$age)` ± `r sd(demog$age)`.
+
+The sample contained `r sum(demog$gen)` women.
+
+```{r  include=FALSE}
+source("means_1strun.R")
+Study_CorrRejectionByType_1R <- Study_CorrRejectionByType
+Study_ResponsesByType_1R <- Study_ResponsesByType
+Test_ResponsesByType_1R <- Test_ResponsesByType
+rm(Study_CorrRejectionByType,Study_ResponsesByType,Test_ResponsesByType)
+
+source("means_2ndrun.R")
+Study_CorrRejectionByType_2R <- Study_CorrRejectionByType
+Study_ResponsesByType_2R <- Study_ResponsesByType
+Test_ResponsesByType_2R <- Test_ResponsesByType
+rm(Study_CorrRejectionByType,Study_ResponsesByType,Test_ResponsesByType)
+
+GNET_orig_safe <- GNET_pilot_filtered
+GNET_pilot_filtered <- GNET_artn_filtered
+source("means_artnarr202301.R")
+Study_CorrRejectionByType_AN <- Study_CorrRejectionByType
+Study_ResponsesByType_AN <- Study_ResponsesByType
+Test_ResponsesByType_AN <- Test_ResponsesByType
+rm(Study_CorrRejectionByType,Study_ResponsesByType,Test_ResponsesByType)
+
+# not yet clear why, but this seems unnecessary
+
+# unite the data from the two runs
+# Study_CorrRejectionByType <- rbind(Study_CorrRejectionByType_1R,Study_CorrRejectionByType_2R)
+# Study_ResponsesByType <- rbind(Study_ResponsesByType_1R,Study_ResponsesByType_2R)
+# Test_ResponsesByType <- rbind(Test_ResponsesByType_1R,Test_ResponsesByType_2R)
+# rm(Study_CorrRejectionByType_1R,Study_CorrRejectionByType_2R,
+#    Study_ResponsesByType_1R,Study_ResponsesByType_2R,
+#    Test_ResponsesByType_1R,Test_ResponsesByType_2R)
+
+# add study id column to DTs
+Study_CorrRejectionByType_1R$stid <- "orig"
+Study_ResponsesByType_1R$stid <- "orig"
+Test_ResponsesByType_1R$stid <- "orig"
+  
+Study_CorrRejectionByType_AN$stid <- "artn"
+colnames(Study_CorrRejectionByType_AN) <- c("response","workerId","type","N","stid")
+Study_ResponsesByType_AN$stid <- "artn"
+colnames(Study_ResponsesByType_AN) <- c("response","workerId","type","N","stid")
+Test_ResponsesByType_AN$stid <- "artn"
+colnames(Test_ResponsesByType_AN) <- c("workerId","type","maybe_O","noresp_O","recog_O","miss_O","maybe_N","noresp_N","fa_N","reject_N","CorrRecog","CorrRejec","OverallCCat","stid")
+
+# unite the data from the two studies
+Study_CorrRejectionByType <- rbind(Study_CorrRejectionByType_1R,Study_CorrRejectionByType_AN)
+Study_ResponsesByType <- rbind(Study_ResponsesByType_1R,Study_ResponsesByType_AN)
+Test_ResponsesByType <- rbind(Test_ResponsesByType_1R,Test_ResponsesByType_AN)
+rm(Study_CorrRejectionByType_1R,Study_CorrRejectionByType_2R,Study_CorrRejectionByType_AN,Study_ResponsesByType_1R,Study_ResponsesByType_2R,Study_ResponsesByType_AN,
+   Test_ResponsesByType_1R,Test_ResponsesByType_2R,Test_ResponsesByType_AN)
+```
+
+# Study phase:
+
+During the study phase, the participants see familiar and novel items.
+
+We use an ANOVA to see if there is a difference in correct rejection for the different novels.
+
+```{r  eval = TRUE, warning=FALSE, echo=FALSE}
+require(gridExtra)
+# ezANOVA(study_dat_news, dv =  crrate, within = type, wid = workerId)
+a1 <- aov_ez("workerId", "N",
+             Study_CorrRejectionByType, within = "type", between = "stid")
+a1
+m3 <- emmeans(a1, ~ type * stid)
+pairs(m3)
+contrast(m3, "poly")
+plot1 <- ggplot(Study_CorrRejectionByType[stid == "orig"], aes(x=type, y=N, color = type)) + 
+  geom_jitter(width=0.2, alpha=0.2) +
+  stat_summary(geom = "errorbar", fun.data = mean_se, width = 0.2) +
+  stat_summary(geom = "point",fun.y = "mean",col = "black",size = 2,shape = 16) +
+  stat_summary(fun.y=mean, colour="black", geom="text", show.legend = FALSE, 
+               vjust=-3.0, aes( label=round(..y.., digits=3))) +
+  scale_x_discrete(labels=c("diffarr" = "FN", "sarr" = "NS&C",
+                              "sarrcol" = "NS", "sarrsha" = "NC", "sarrshacol" = "NCC")) + 
+  ggtitle("Original GNET") +
+  xlab("") +
+  ylab("Nr of correct rejections") +
+  theme(legend.position = "none")
+
+plot2 <- ggplot(Study_CorrRejectionByType[stid == "artn"], aes(x=type, y=N, color = type)) + 
+  geom_jitter(width=0.2, alpha=0.2) +
+  stat_summary(geom = "errorbar", fun.data = mean_se, width = 0.2) +
+  stat_summary(geom = "point",fun.y = "mean",col = "black",size = 2,shape = 16) +
+  stat_summary(fun.y=mean, colour="black", geom="text", show.legend = FALSE, 
+               vjust=-3.0, aes( label=round(..y.., digits=3))) +
+  scale_x_discrete(labels=c("diffarr" = "FN", "sarr" = "NS&C",
+                              "sarrcol" = "NS", "sarrsha" = "NC", "sarrshacol" = "NCC")) + 
+  ggtitle("Art narrative GNET") +
+  xlab("") +
+  ylab("Nr of correct rejections") +
+  theme(legend.position = "none")
+
+grid.arrange(plot1, plot2, ncol=2)
+```
+
+# Test phase:
+
+This phase tests the learning that has occurred during the study phase. If the participants learned the novels in the study phase, their responses should differ for the stimuli that they have already seen during the study phase (familiars) and those that they see for the first time during the test phase (novels).
+
+```{r  warning=FALSE, echo=FALSE}
+library(rstatix)
+```
+
+## ANOVA - Corrected Recog
+
+```{r  warning=FALSE, echo=FALSE}
+
+Test_ResponsesByType$neworder <- ""
+Test_ResponsesByType[type == "diffarr", neworder := "A"]
+Test_ResponsesByType[type == "sarr", neworder := "B"]
+Test_ResponsesByType[type == "sarrcol", neworder := "D"]
+Test_ResponsesByType[type == "sarrsha", neworder := "C"]
+Test_ResponsesByType[type == "sarrshacol", neworder := "E"]
+
+setorder(Test_ResponsesByType, neworder)
+
+a1 <- aov_ez("workerId", "CorrRecog",
+             Test_ResponsesByType, within = c("neworder"), between = "stid")
+a1
+m3 <- emmeans(a1, ~ neworder * stid)
+pairs(m3)
+posthoc <- pairs(m3)
+contrast(m3, "poly")
+
+plot1 <- ggplot(Test_ResponsesByType[stid == "orig"], aes(x=neworder, y=CorrRecog, color=neworder))+
+  geom_jitter(width=0.3, alpha=0.3) +
+  stat_summary(geom = "errorbar", fun.data = mean_se, col = "black", width = 0.2) +
+  stat_summary(geom = "point",fun.y = "mean",col = "black",size = 2,shape = 16) +
+  stat_summary(fun.y=mean, colour="black", geom="text", show.legend = FALSE, 
+               vjust=-3.0, aes( label=round(..y.., digits=3))) +
+  scale_x_discrete(labels=c("A" = "FN", "B" = "NS&C",
+                              "D" = "NS", "C" = "NC", "E" = "NCC")) +
+  ggtitle("Original GNET")+
+  xlab("")+
+  ylab("")+
+  theme(legend.position = "none")
+
+plot2 <- ggplot(Test_ResponsesByType[stid == "artn"], aes(x=neworder, y=CorrRecog, color=neworder))+
+  geom_jitter(width=0.3, alpha=0.3) +
+  stat_summary(geom = "errorbar", fun.data = mean_se, col = "black", width = 0.2) +
+  stat_summary(geom = "point",fun.y = "mean",col = "black",size = 2,shape = 16) +
+  stat_summary(fun.y=mean, colour="black", geom="text", show.legend = FALSE, 
+               vjust=-3.0, aes( label=round(..y.., digits=3))) +
+  scale_x_discrete(labels=c("A" = "FN", "B" = "NS&C",
+                              "D" = "NS", "C" = "NC", "E" = "NCC")) +
+  ggtitle("Art narrative GNET")+
+  xlab("")+
+  ylab("")+
+  theme(legend.position = "none")
+
+grid.arrange(plot1, plot2, ncol=2)
+
+ndf <- a1$anova_table$`num Df`
+ddf <- a1$anova_table$`den Df`
+p <- a1$anova_table$`Pr(>F)`
+```
+
+ANOVA (factor: TYPE (5 lvls)): (F[`r ndf`,`r ddf`] = `r a1$anova_table$F`, p = `r p`, n2G = `r a1$anova_table$ges`).
+
+# Mixed models
+
+The metrics
+
+-DTF - Difference To corresponding Familiar picture
+All pictures are compared to a familiar. The number of differences between the three vectors of the pictures yields a difference score.
+
+-DTAF - mean Difference To All Familiars
+We calculate the difference from all prototypes and take the mean for each picture in the set.
+
+-DTN - mean Difference To all other Novels in the same category
+We calculate the differences between each pair of pictures and then take the mean of these differences (19 comparisons per stim).
+
+
+```{r  include=FALSE}
+library(lme4)
+library(lmerTest)
+library(sjPlot)
+
+GNET_artn_filtered$stid <- "artn"
+colnames(GNET_artn_filtered) <- c("count_study_sequence","count_test_sequence","datetime","response","response_study_response","response_test_response","response_time","response_time_study_response","response_time_test_response","stim","workerId","studyResultId","type","tq","DTF","ColDTF","ShaDTF","ArrDTF","DTAF","ColDTAF","ShaDTAF","ArrDTAF","DTAN","ColDTAN","ShaDTAN","ArrDTAN","DTN_byPhase","ColDTN_bP","ShaDTN_bP","ArrDTN_bP","DTN","stid")
+GNET_orig_safe$stid <- "orig"
+GNET_orig_safe[,batchId := NULL]
+GNET_orig_safe[,batchTitle := NULL]
+
+# we use a preprocessed DT which holds the data of the 59 participants that were not thrown out
+lmmdat <- rbind(GNET_artn_filtered,GNET_orig_safe)
+
+# lmmdat$DTF <- scale(lmmdat$DTF)
+# lmmdat$DTAF <- scale(lmmdat$DTAF)
+# lmmdat$DTAN <- scale(lmmdat$DTAN)
+# lmmdat$DTN_byPhase <- scale(lmmdat$DTN_byPhase)
+# lmmdat$DTN <- scale(lmmdat$DTN)
+
+stlmm <- lmmdat[is.na(count_test_sequence),]
+stlmm$st_corr <- 0
+stlmm[type == "prototype" & response == "left", st_corr := 1]
+stlmm[type != "prototype" & response == "right", st_corr := 1]
+
+tdlmm <- lmmdat[!(is.na(count_test_sequence)),]
+
+tdlmm$rt_resp <- 0
+tdlmm[response == "left",rt_resp := 1]
+tdlmm[response == "right",rt_resp := 0]
+tdlmm[response == "down",rt_resp := NA]
+tdlmm[response == "None",rt_resp := NA]
+
+t2lmm <- merge(stlmm,tdlmm,by=c("datetime","stim",
+                  "workerId","type","DTF","DTAF","DTAN","DTN_byPhase","DTN"))
+```
+
+## Study phase
+
+With these models i tried to assess which difference index explains familiar v novel distinction in study phase the best. As far as i understand, the model with the smallest AIC fits best to our data, which means that the mean difference from the corresponding familiar worked best here. The models all show, that the more different pictures are categorized with the highest efficacy.
+
+```{r  eval = TRUE, warning=FALSE, echo=FALSE}
+
+# 2Nd model
+logmr2 <- glmer(st_corr ~ DTF + stid + (1|workerId),
+               data = stlmm,
+               family = binomial)
+summary(logmr2)
+plot_model(logmr2, type = "eff")
+# 3Rd model
+logmr3 <- glmer(st_corr ~ DTAF + stid + (1|workerId),
+               data = stlmm,
+               family = binomial)
+summary(logmr3)
+plot_model(logmr3, type = "eff")
+# 4th model
+logmr4 <- glmer(st_corr ~ DTAN + stid + (1|workerId),
+               data = stlmm,
+               family = binomial)
+summary(logmr4)
+plot_model(logmr4, type = "eff")
+
+tab_model(logmr2,logmr3,logmr4,
+          # = c("Model 1", "Model 2", "Model 3", "Model 4"),
+          show.est = TRUE,
+          # show.ci = TRUE,
+          show.se = TRUE,
+          show.r2 = TRUE,
+          # show.adj.icc = TRUE,
+          # show.icc = FALSE,
+          # pred.labels =
+          show.aic = TRUE,
+          show.aicc = TRUE,
+          # show.std = TRUE,
+          transform = NULL)
+```
+
+## Test phase
+
+### Models #1 - without random slope term
+
+Logistic mixed regression for the test phase. Does difference from prototypes or familiarity/novelty have an effect on correct categorization in the test phase?
+
+These models use trial quality (familiar / novel) as a fixed and as a random effect.
+
+rt_resp is recognition test response, 0 stands for 'old' and 1 stands for 'new'.
+
+```{r  eval = TRUE, warning=FALSE, echo=FALSE}
+
+logmr2 <- glmer(rt_resp ~ DTF * tq + stid + (1|workerId),
+               data = tdlmm,
+               family = binomial)
+summary(logmr2)
+plot_model(logmr2, type = "eff")$DTF
+plot_model(logmr2, type = "eff")$tq
+plot_model(logmr2, type = "int")
+
+logmr3 <- glmer(rt_resp ~ DTAF * tq + stid + (1|workerId),
+               data = tdlmm,
+               family = binomial)
+summary(logmr3)
+plot_model(logmr3, type = "eff")$DTAF
+plot_model(logmr3, type = "eff")$tq
+plot_model(logmr3, type = "int")
+
+logmr4 <- glmer(rt_resp ~ DTAN * tq + stid + (1|workerId),
+               data = tdlmm,
+               family = binomial)
+summary(logmr4)
+plot_model(logmr4, type = "eff")$DTAN
+plot_model(logmr4, type = "eff")$tq
+plot_model(logmr4, type = "int")
+
+tab_model(logmr2,logmr3,logmr4,
+          # = c("Model 1", "Model 2", "Model 3", "Model 4"),
+          show.est = TRUE,
+          # show.ci = TRUE,
+          show.se = TRUE,
+          show.r2 = TRUE,
+          # show.adj.icc = TRUE,
+          # show.icc = FALSE,
+          # pred.labels =
+          show.aic = TRUE,
+          show.aicc = TRUE,
+          # show.std = TRUE,
+          transform = NULL)
+
+```
+
+### Models #2 - with random slope (trial quality)
+
+Logistic mixed regression for the test phase. Does difference from prototypes or familiarity/novelty have an effect on correct categorization in the test phase?
+
+These models use trial quality (familiar / novel) as a fixed effect only.
+
+rt_resp is recognition test response, 0 stands for 'old' and 1 stands for 'new'.
+
+```{r  eval = TRUE, warning=FALSE, echo=FALSE}
+
+logmr2 <- glmer(rt_resp ~ DTF * tq + stid + (tq|workerId),
+               data = tdlmm,
+               family = binomial,
+               control = lmerControl(optCtrl=list(xtol_abs=1e-8, ftol_abs=1e-8, maxeval=100000)))
+summary(logmr2)
+plot_model(logmr2, type = "eff")$DTF +
+  scale_y_continuous(limits = c(0, 0.7), 
+                     labels = scales::percent_format(accuracy = 1)) +
+  ggtitle("Predicted probability of 'already seen' response") + 
+  ylab("")
+
+plot_model(logmr2, type = "eff")$tq +
+  scale_y_continuous(limits = c(0.25, 0.45), 
+                     labels = scales::percent_format(accuracy = 1)) +
+  ggtitle("Predicted probability of 'already seen' response") + 
+  ylab("") + 
+  xlab("") +
+  scale_x_discrete(limits=c("new" = "distractor", "old" = "previously presented"))
+
+plot_model(logmr2, type = "int") +
+  scale_y_continuous(limits = c(0, 0.7), 
+                     labels = scales::percent_format(accuracy = 1)) +
+  ggtitle("Predicted probability of 'already seen' response") + 
+  ylab("") +
+  scale_color_discrete(name = "Trial type", labels=c("new" = "distractor", "old" = "prev. pres")) 
+
+logmr3 <- glmer(rt_resp ~ DTAF * tq + stid + (tq|workerId),
+               data = tdlmm,
+               family = binomial)
+summary(logmr3)
+plot_model(logmr3, type = "eff")$DTAF
+plot_model(logmr3, type = "eff")$tq
+plot_model(logmr3, type = "int")
+
+logmr4 <- glmer(rt_resp ~ DTAN * tq + stid + (tq|workerId),
+               data = tdlmm,
+               family = binomial)
+summary(logmr4)
+plot_model(logmr4, type = "eff")$DTAN
+plot_model(logmr4, type = "eff")$tq
+plot_model(logmr4, type = "int")
+
+tab_model(logmr2,logmr3,logmr4,
+          # = c("Model 1", "Model 2", "Model 3", "Model 4"),
+          show.est = TRUE,
+          # show.ci = TRUE,
+          show.se = TRUE,
+          show.r2 = TRUE,
+          # show.adj.icc = TRUE,
+          # show.icc = FALSE,
+          # pred.labels =
+          show.aic = TRUE,
+          show.aicc = TRUE,
+          # show.std = TRUE,
+          transform = NULL)
+
+```
+
+### Models #3 - with random slope (d index)
+
+```{r  eval = TRUE, warning=FALSE, echo=FALSE}
+
+logmr2 <- glmer(rt_resp ~ DTF * tq + stid + (DTF|workerId),
+               data = tdlmm,
+               family = binomial,
+               control = lmerControl(optCtrl=list(xtol_abs=1e-8, ftol_abs=1e-8, maxeval=100000)))
+summary(logmr2)
+plot_model(logmr2, type = "eff")$DTF +
+  scale_y_continuous(limits = c(0, 0.7), 
+                     labels = scales::percent_format(accuracy = 1)) +
+  ggtitle("Predicted probability of 'already seen' response") + 
+  ylab("")
+
+plot_model(logmr2, type = "eff")$tq +
+  scale_y_continuous(limits = c(0.25, 0.45), 
+                     labels = scales::percent_format(accuracy = 1)) +
+  ggtitle("Predicted probability of 'already seen' response") + 
+  ylab("") + 
+  xlab("") +
+  scale_x_discrete(limits=c("new" = "distractor", "old" = "previously presented"))
+
+plot_model(logmr2, type = "int") +
+  scale_y_continuous(limits = c(0, 0.7), 
+                     labels = scales::percent_format(accuracy = 1)) +
+  ggtitle("Predicted probability of 'already seen' response") + 
+  ylab("") +
+  scale_color_discrete(name = "Trial type", labels=c("new" = "distractor", "old" = "prev. pres")) 
+
+logmr3 <- glmer(rt_resp ~ DTAF * tq + stid + (DTAF|workerId),
+               data = tdlmm,
+               family = binomial)
+summary(logmr3)
+plot_model(logmr3, type = "eff")$DTAF
+plot_model(logmr3, type = "eff")$tq
+plot_model(logmr3, type = "int")
+
+logmr4 <- glmer(rt_resp ~ DTAN * tq + stid + (DTAN|workerId),
+               data = tdlmm,
+               family = binomial)
+summary(logmr4)
+plot_model(logmr4, type = "eff")$DTAN
+plot_model(logmr4, type = "eff")$tq
+plot_model(logmr4, type = "int")
+
+tab_model(logmr2,logmr3,logmr4,
+          # = c("Model 1", "Model 2", "Model 3", "Model 4"),
+          show.est = TRUE,
+          # show.ci = TRUE,
+          show.se = TRUE,
+          show.r2 = TRUE,
+          # show.adj.icc = TRUE,
+          # show.icc = FALSE,
+          # pred.labels =
+          show.aic = TRUE,
+          show.aicc = TRUE,
+          # show.std = TRUE,
+          transform = NULL)
+
+```

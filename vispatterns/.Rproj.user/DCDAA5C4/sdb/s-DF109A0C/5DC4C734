@@ -1,0 +1,21 @@
+{
+    "collab_server" : "",
+    "contents" : "types <- c(\"diffarr\",\"sarr\",\"sarrsha\",\"sarrcol\",\"sarrshacol\")\nfor (i in 1:5){\n  normalornot <- shapiro.test(Test_ResponsesByType[type == types[i],CorrRecog])\n  if (normalornot$p.value < 0.05){\n    wtest <- wilcox.test(Test_ResponsesByType[type == types[i],CorrRecog], mu = 0, alternative = \"greater\")\n    print(wtest)\n    print(qnorm(wtest$p.value))\n  } else {\n    print(t.test(Test_ResponsesByType[type == types[i],CorrRecog], mu = 0, alternative = \"greater\"))\n  }\n}\n\n\n\n\n",
+    "created" : 1622627494338.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "3359153006",
+    "id" : "5DC4C734",
+    "lastKnownWriteTime" : 1623330526,
+    "last_content_update" : 1623330526902,
+    "path" : "~/vispatterns/wilcox-tests.R",
+    "project_path" : "wilcox-tests.R",
+    "properties" : {
+        "tempName" : "Untitled1"
+    },
+    "relative_order" : 5,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_source"
+}

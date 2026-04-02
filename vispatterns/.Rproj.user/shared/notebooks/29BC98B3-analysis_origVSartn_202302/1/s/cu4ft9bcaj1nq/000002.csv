@@ -1,0 +1,52 @@
+"0","library(lme4)"
+"0","library(lmerTest)"
+"2","
+Attaching package: ‘lmerTest’
+
+"
+"2","The following object is masked from ‘package:lme4’:
+
+    lmer
+
+"
+"2","The following object is masked from ‘package:stats’:
+
+    step
+
+"
+"0","library(sjPlot)"
+"2","Warning:"
+"2"," package ‘sjPlot’ was built under R version 4.1.2
+"
+"2","#refugeeswelcome
+"
+"0","GNET_artn_filtered$stid <- ""artn"""
+"0","colnames(GNET_artn_filtered) <- c(""count_study_sequence"",""count_test_sequence"",""datetime"",""response"",""response_study_response"",""response_test_response"",""response_time"",""response_time_study_response"",""response_time_test_response"",""stim"",""workerId"",""studyResultId"",""type"",""tq"",""DTF"",""ColDTF"",""ShaDTF"",""ArrDTF"",""DTAF"",""ColDTAF"",""ShaDTAF"",""ArrDTAF"",""DTAN"",""ColDTAN"",""ShaDTAN"",""ArrDTAN"",""DTN_byPhase"",""ColDTN_bP"",""ShaDTN_bP"",""ArrDTN_bP"",""DTN"",""stid"")"
+"0","GNET_orig_safe$stid <- ""orig"""
+"0","GNET_orig_safe[,batchId := NULL]"
+"0","GNET_orig_safe[,batchTitle := NULL]"
+"0",""
+"0","# we use a preprocessed DT which holds the data of the 59 participants that were not thrown out"
+"0","lmmdat <- rbind(GNET_artn_filtered,GNET_orig_safe)"
+"0",""
+"0","# lmmdat$DTF <- scale(lmmdat$DTF)"
+"0","# lmmdat$DTAF <- scale(lmmdat$DTAF)"
+"0","# lmmdat$DTAN <- scale(lmmdat$DTAN)"
+"0","# lmmdat$DTN_byPhase <- scale(lmmdat$DTN_byPhase)"
+"0","# lmmdat$DTN <- scale(lmmdat$DTN)"
+"0",""
+"0","stlmm <- lmmdat[is.na(count_test_sequence),]"
+"0","stlmm$st_corr <- 0"
+"0","stlmm[type == ""prototype"" & response == ""left"", st_corr := 1]"
+"0","stlmm[type != ""prototype"" & response == ""right"", st_corr := 1]"
+"0",""
+"0","tdlmm <- lmmdat[!(is.na(count_test_sequence)),]"
+"0",""
+"0","tdlmm$rt_resp <- 0"
+"0","tdlmm[response == ""left"",rt_resp := 1]"
+"0","tdlmm[response == ""right"",rt_resp := 0]"
+"0","tdlmm[response == ""down"",rt_resp := NA]"
+"0","tdlmm[response == ""None"",rt_resp := NA]"
+"0",""
+"0","t2lmm <- merge(stlmm,tdlmm,by=c(""datetime"",""stim"","
+"0","                  ""workerId"",""type"",""DTF"",""DTAF"",""DTAN"",""DTN_byPhase"",""DTN""))"

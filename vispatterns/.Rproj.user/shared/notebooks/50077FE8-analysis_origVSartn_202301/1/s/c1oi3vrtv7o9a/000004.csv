@@ -1,0 +1,5 @@
+"0","Study_ResponsesByType <- rbind(Study_ResponsesByType_1R,Study_ResponsesByType_AN)
+"
+"2","Error in rbindlist(l, use.names, fill, idcol) : 
+  Column 2 ['multichar_knowresp'] of item 2 is missing in item 1. Use fill=TRUE to fill with NA (NULL for list columns), or use.names=FALSE to ignore column names.
+"

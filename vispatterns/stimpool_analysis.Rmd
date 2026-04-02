@@ -1,0 +1,133 @@
+---
+title: "Graded Novelty Enoding Task - Stimulus pool analysis"
+output: html_document
+---
+```{r  include=FALSE}
+source("difference_innumbers.R")
+
+library(ez)
+library(ggplot2)
+library(emmeans)
+library(DescTools)
+library(stats)
+library(afex)
+library(effsize)
+```
+
+# The metrics
+
+### Differences between the prototypes
+
+```{r  eval = TRUE, warning=FALSE, echo=FALSE}
+
+differences <- c()
+for (i in 1:nrow(prot_arr)){
+  comp_p_arr <- prot_arr[pict != prot_arr$pict[i]]
+  comp_p_col <- prot_col[pict != prot_col$pict[i]]
+  comp_p_sha <- prot_sha[pict != prot_sha$pict[i]]
+  for (j in 1:nrow(comp_p_arr)){
+    arrdiff <- prot_arr[i] - comp_p_arr[j]
+    ad <- table(arrdiff[,arrdiff != 0])["TRUE"][[1]]
+    if (is.na(ad)){ad <- 0}
+    ###
+    coldiff <- prot_col[i] - comp_p_col[j]
+    cd <- table(coldiff[,coldiff != 0])["TRUE"][[1]]
+    if (is.na(cd)){cd <- 0}
+    ###
+    shadiff <- prot_sha[i] - comp_p_sha[j]
+    sd <- table(shadiff[,shadiff != 0])["TRUE"][[1]]
+    if (is.na(sd)){sd <- 0}
+    ###
+    diffsum <- ad + cd + sd
+    differences <- c(differences,diffsum)
+  }
+}
+
+print(mean(differences))
+
+```
+
+### Difference from corresponding familiar picture
+All pictures are compared to a familiar. The number of differences between the three vectors of the pictures yields a difference score.
+
+```{r  eval = TRUE, warning=FALSE, echo=FALSE}
+ggplot(difftoprot, aes(x=type, y=DTF, color=type))+
+  geom_jitter(width=0.2, alpha=0.8) +
+  stat_summary(geom = "errorbar", fun.data = mean_se, width = 0.2) +
+  stat_summary(geom = "point",fun.y = "mean",col = "black",size = 2,shape = 16) +
+  stat_summary(fun.y=mean, colour="black", geom="text", show.legend = FALSE, 
+               vjust=-3.0, aes( label=round(..y.., digits=3))) +
+  scale_x_discrete(labels=c("diffarr" = "novel layout", "sarr" = "novel shapes & colors",
+                              "sarrcol" = "novel shapes", "sarrsha" = "novel colors", "sarrshacol" = "novel fill")) +
+  theme(legend.position = "none") +
+  ylab("Difference")
+
+
+```
+
+
+
+### Mean difference from all prototypes
+We calculate the difference from all prototypes and take the mean for each picture in the set.
+
+```{r  eval = TRUE, warning=FALSE, echo=FALSE}
+ggplot(difftoprots[type != "",], aes(x=type, y=DTAF, color=type))+
+  geom_jitter(width=0.2, alpha=0.8) +
+  stat_summary(geom = "errorbar", fun.data = mean_se, width = 0.2) +
+  stat_summary(geom = "point",fun.y = "mean",col = "black",size = 2,shape = 16) +
+  stat_summary(fun.y=mean, colour="black", geom="text", show.legend = FALSE, 
+               vjust=-3.0, aes( label=round(..y.., digits=3))) +
+  scale_x_discrete(labels=c("diffarr" = "novel layout", "sarr" = "novel shapes & colors",
+                              "sarrcol" = "novel shapes", "sarrsha" = "novel colors", "sarrshacol" = "novel fill")) +
+  theme(legend.position = "none") + 
+  ylab("Difference")
+```
+
+### Mean difference from all other pictures in the same category
+We calculate the differences between each pair of pictures and then take the mean of these differences (19 comparisons per stim).
+
+```{r  eval = TRUE, warning=FALSE, echo=FALSE}
+ggplot(diffinnovs[type != "",], aes(x=type, y=DTAN, color=type))+
+  geom_jitter(width=0.2, alpha=0.8) +
+  stat_summary(geom = "errorbar", fun.data = mean_se, width = 0.2) +
+  stat_summary(geom = "point",fun.y = "mean",col = "black",size = 2,shape = 16) +
+  stat_summary(fun.y=mean, colour="black", geom="text", show.legend = FALSE, 
+               vjust=-3.0, aes( label=round(..y.., digits=3))) +
+  scale_x_discrete(labels=c("diffarr" = "novel layout", "sarr" = "novel shapes & colors",
+                              "sarrcol" = "novel shapes", "sarrsha" = "novel colors", "sarrshacol" = "novel fill")) +
+  theme(legend.position = "none") + 
+  ylab("Difference")
+```
+
+### Mean difference from all other pictures in the same category per study/test phase
+We calculate the differences between each pair of pictures and then take the mean of these differences (9 comparisons per stim).
+
+```{r  eval = TRUE, warning=FALSE, echo=FALSE}
+ggplot(diffinnovs2[type != "",], aes(x=type, y=DTN_byPhase, color=type))+
+  geom_jitter(width=0.2, alpha=0.8) +
+  stat_summary(geom = "errorbar", fun.data = mean_se, width = 0.2) +
+  stat_summary(geom = "point",fun.y = "mean",col = "black",size = 2,shape = 16) +
+  stat_summary(fun.y=mean, colour="black", geom="text", show.legend = FALSE, 
+               vjust=-3.0, aes( label=round(..y.., digits=3))) +
+  scale_x_discrete(labels=c("diffarr" = "novel layout", "sarr" = "novel shapes & colors",
+                              "sarrcol" = "novel shapes", "sarrsha" = "novel colors", "sarrshacol" = "novel fill")) +
+  theme(legend.position = "none") + 
+  ylab("Difference") + 
+  facet_wrap(~phase)
+```
+
+### DTPPm - mean Diff To Previously seen Pictures
+We compare the current picture to all previously seen pictures (25 in first study trial, 26 in 2nd, and so on ..). We take the mean.
+
+```{r  eval = TRUE, warning=FALSE, echo=FALSE}
+library(ggforce)
+
+lmmdat <- as.data.table(read.csv("filtereddata_pilot1_alldiffind.csv"))
+for (i in 1:15){
+  print(ggplot(lmmdat, aes(x=stimpresseq, y=DTPPm))+
+    geom_jitter(aes(color=type),width=0.2, alpha=0.7) +
+      geom_line(aes(x=stimpresseq, y =DTPPm), alpha=0.3) +
+    ylab("Difference") + 
+    facet_wrap_paginate(~ workerId, ncol = 2, nrow = 2, page = i))
+}
+```

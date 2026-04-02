@@ -1,0 +1,2 @@
+"0","mayberesps <- GNET_pilot_filtered[!(is.na(count_test_sequence)) & response == ""down"",.(rowCount = .N),by=c(""workerId"",""studyResultId"")]"
+"0","mayberespsbytype <- GNET_pilot_filtered[!(is.na(count_test_sequence)) & response == ""down"",.(rowCount = .N),by=c(""workerId"",""studyResultId"",""type"")]"

@@ -1,0 +1,35 @@
+---
+title: "Graded Novelty Enoding Task - Stimulus pool analysis"
+output: html_document
+---
+```{r  include=FALSE}
+difference_indices <- read.csv("difference_indices_202405.csv")
+
+library(ez)
+library(ggplot2)
+library(emmeans)
+library(DescTools)
+library(stats)
+library(afex)
+library(effsize)
+```
+
+# The difference scores
+
+### NCA - DCO (new comparison algorithm - difference to closest original)
+All pictures are compared to a familiar. 
+
+```{r  eval = TRUE, warning=FALSE, echo=FALSE}
+ggplot(difference_indices[!(is.na("NCA_DCO")),], aes(x=type, y=NCA_DCO, color=type))+
+  geom_jitter(width=0.2, alpha=0.8) +
+  stat_summary(geom = "errorbar", fun.data = mean_se, width = 0.2) +
+  stat_summary(geom = "point",fun.y = "mean",col = "black",size = 2,shape = 16) +
+  stat_summary(fun.y=mean, colour="black", geom="text", show.legend = FALSE, 
+               vjust=-3.0, aes( label=round(..y.., digits=3))) +
+  scale_x_discrete(labels=c("diffarr" = "novel layout", "sarr" = "novel shapes & colors",
+                              "sarrcol" = "novel shapes", "sarrsha" = "novel colors", "sarrshacol" = "novel fill")) +
+  theme(legend.position = "none") +
+  ylab("Difference")
+
+
+```

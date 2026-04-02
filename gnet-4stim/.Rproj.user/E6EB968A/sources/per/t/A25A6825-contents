@@ -1,0 +1,69 @@
+---
+title: "R Notebook"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r}
+# preprocessing JATOS -- OSweb CSVs
+# not necessary to run everytime
+source("preProc_gnet4s_orig.R")
+source("preProc_gnet4s_delay.R")
+source("preProc_gnet4s_artn.R")
+source("preProc_gnet4s_delart.R")
+
+# calculating main performance indices
+source("Proc_gnet4s_orig.R")
+source("Proc_gnet4s_delay.R")
+source("Proc_gnet4s_artn.R")
+source("Proc_gnet4s_delart.R")
+
+# difference indices can be read from a .csv
+
+# old indices 
+# difference_indices <- read.csv("DiffIndices.csv")
+# difference_indices$X <- NULL
+
+# new index added
+difference_indices <- read.csv("difference_indices_202405.csv")
+
+colnames(difference_indices)[1] <- "stim"
+difference_indices$stim <- paste(difference_indices$stim, ".png", sep = "")
+
+# exclusions have to be made
+# based on missed responses
+exclude_gnet4s_orig <- c(gnet4s_orig_MissedRespSummary[V1 > 46,multichar_knowresp])
+exclude_gnet4s_delay <- c(gnet4s_delay_MissedRespSummary[V1 > 46,multichar_knowresp])
+exclude_gnet4s_artn <- c(gnet4s_artn_MissedRespSummary[V1 > 46,multichar_knowresp])
+exclude_gnet4s_delart <- c(gnet4s_delart_MissedRespSummary[V1 > 46,multichar_knowresp])
+
+# based on resp to fam
+exclude_gnet4s_orig <- unique(c(exclude_gnet4s_orig, gnet4s_orig_StudyCR[CR < 0.33, multichar_knowresp]))
+exclude_gnet4s_delay <- unique(c(exclude_gnet4s_delay, gnet4s_delay_StudyCR[CR < 0.33, multichar_knowresp]))
+exclude_gnet4s_artn <- unique(c(exclude_gnet4s_artn, gnet4s_artn_StudyCR[CR < 0.33, multichar_knowresp]))
+
+exclude_gnet4s_delart <- unique(c(exclude_gnet4s_delart, gnet4s_delart_StudyCR[CR < 0.33, multichar_knowresp]))
+exclude_gnet4s_delart <- unique(c(exclude_gnet4s_delart, gnet4s_delart_StudyCR[is.na(CR), multichar_knowresp]))
+
+# based on maybe resp
+exclude_gnet4s_orig <- unique(c(exclude_gnet4s_orig, gnet4s_orig_MaybeRespSummary[rowCount > 40,multichar_knowresp]))
+exclude_gnet4s_delay <- unique(c(exclude_gnet4s_delay,gnet4s_delay_MaybeRespSummary[rowCount > 40,multichar_knowresp]))
+exclude_gnet4s_artn <- unique(c(exclude_gnet4s_artn,gnet4s_artn_MaybeRespSummary[rowCount > 40,multichar_knowresp]))
+exclude_gnet4s_delart <- unique(c(exclude_gnet4s_delart,gnet4s_delart_MaybeRespSummary[rowCount > 40,multichar_knowresp]))
+
+library(effsize)
+# analyses with main performance indices
+source("Analysis_gnet4s_orig.R")
+source("Analysis_gnet4s_delay.R")
+source("Analysis_gnet4s_artn.R")
+source("Analysis_gnet4s_delart.R")
+
+# data for lmm and models
+source("LMMproc_gnet4s_orig.R")
+source("LMMproc_gnet4s_delay.R")
+source("LMMproc_gnet4s_artn.R")
+source("LMMproc_gnet4s_delart.R")
+
+
+```
