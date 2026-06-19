@@ -3,7 +3,7 @@ title: "Graded Novelty Enoding Task - 4 shapes version"
 output:
   html_document:
     toc: true
-    toc_float: 
+    toc_float:
       collapsed: false
     toc_depth: 4
 ---
