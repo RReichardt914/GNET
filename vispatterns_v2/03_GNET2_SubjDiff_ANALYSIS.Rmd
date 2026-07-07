@@ -1,0 +1,591 @@
+---
+title: "GNET - 4E & diff judgements - basic analysis"
+output:
+  html_document:
+    toc: true
+    toc_float:
+      collapsed: false
+    toc_depth: 4
+---
+
+# GNET - 4 elements with difference ratings from participants
+
+This is the analysis of the second run of GNET4E.
+Everything is the same, except that in the study phase participants looked at a familiar first then a novel and rated the subjective difference of the images.
+
+As in the original task, stimuli were algorithmically generated, allowing precise comparison between stimuli.
+The difference between the stimulus presented and other stimuli (several comparisons are used) is a proxy for novelty.
+
+During familiarization, participants learned a set of 5 stimuli
+During the study phase, they rated the difference of these stimuli to novels.
+During the test phase, the performed a recognition memory test for the novels intermixed with distractors.
+- Novels and distractors were balanced.
+
+In the original GNET, recognition performance tended to increase monotonically with difference to familiars
+In the GNET4E participants showed their highest categorization performance for stimuli at intermediate levels of difference.
+
+## Difference indices
+
+```{r preparations, include=FALSE}
+source("01_DIFFERENCE_CALCULATIONS.R")
+
+library(tidyverse)
+library(ez)
+library(emmeans)
+library(DescTools)
+library(afex)
+library(effsize)
+library(Hmisc)
+
+gnet2_data <- read_csv(
+  "gnet_v2_jd_data.csv",
+  locale = locale(encoding = "UTF-8")
+) %>%
+  select(
+    count_study_sequence,
+    count_test_sequence,
+    datetime,
+    response,
+    response_study_response,
+    response_test_response,
+    response_time,
+    response_time_study_response,
+    response_time_test_response,
+    stim,
+    stim_2,
+    studyResultId,
+    total_responses,
+    workerId
+  ) %>%
+  filter(!is.na(workerId)) %>%
+  mutate(
+    stimtype = case_when(
+      is.na(count_test_sequence) & str_detect(stim_2, "prototype") ~ "prototype",
+      is.na(count_test_sequence) & str_detect(stim_2, "p[1-5]d1") ~ "D1",
+      is.na(count_test_sequence) & str_detect(stim_2, "p[1-5]d2") ~ "D2",
+      is.na(count_test_sequence) & str_detect(stim_2, "p[1-5]d3") ~ "D3",
+      is.na(count_test_sequence) & str_detect(stim_2, "p[1-5]d4") ~ "D4",
+      is.na(count_test_sequence) & str_detect(stim_2, "p[6-9]") ~ "D5",
+      is.na(count_test_sequence) & str_detect(stim_2, "p10") ~ "D5",
+
+      !is.na(count_test_sequence) & str_detect(stim, "p[1-5]d1") ~ "D1",
+      !is.na(count_test_sequence) & str_detect(stim, "p[1-5]d2") ~ "D2",
+      !is.na(count_test_sequence) & str_detect(stim, "p[1-5]d3") ~ "D3",
+      !is.na(count_test_sequence) & str_detect(stim, "p[1-5]d4") ~ "D4",
+      !is.na(count_test_sequence) & str_detect(stim, "p[6-9]") ~ "D5",
+      !is.na(count_test_sequence) & str_detect(stim, "p10") ~ "D5",
+
+      TRUE ~ NA_character_
+    ),
+
+    test_quality = case_when(
+      str_detect(stim, "_[1-2]") & !is.na(response_time_test_response) ~ "fam",
+      str_detect(stim, "_[3-4]") & !is.na(response_time_test_response) ~ "new",
+      TRUE ~ NA_character_
+    ),
+
+    rt_corr = case_when(
+      str_detect(stim, "_[1-2]") & response_test_response == "left"  ~ 1,
+      str_detect(stim, "_[1-2]") & response_test_response == "right" ~ 0,
+      str_detect(stim, "_[3-4]") & response_test_response == "left"  ~ 0,
+      str_detect(stim, "_[3-4]") & response_test_response == "right" ~ 1,
+      TRUE ~ NA_real_
+    )
+  )
+```
+
+```{r add_diff_indices, include=FALSE}
+# preprocessed data and difference indices are used to calculate study and test indices
+
+gnet2_data <- gnet2_data %>%
+  rowwise() %>%
+  mutate(
+    match_row = which(str_detect(stim_2, fixed(difference_indices$stimulus_id)))[1],
+    DTF = ifelse(is.na(match_row), 0, difference_indices$DTF[match_row]),
+    DTAF = ifelse(is.na(match_row), 0, difference_indices$DTAF[match_row]),
+    DTAN = ifelse(is.na(match_row), 0, difference_indices$DTAN[match_row]),
+    DTN = ifelse(is.na(match_row), 0, difference_indices$DTN[match_row])
+  ) %>%
+  ungroup() %>%
+  select(-match_row) %>%
+  mutate(
+    identifier = paste0(workerId, "_", studyResultId)
+  )
+```
+
+```{r difference_ratings, include=FALSE}
+# Calculate each participant's subjective difference ratings during the study phase.
+# For every participant (workerId/studyResultId) and stimulus category (stimtype),
+# compute both the mean and standard deviation of the difference judgments
+# (response_study_response), then create a unique participant-session identifier.
+
+# study DT ####
+gnet2_data <- gnet2_data %>%
+  mutate(
+    response_study_response = na_if(response_study_response, "None"),
+    response_study_response = as.numeric(response_study_response)
+  )
+
+mean_jds <- gnet2_data %>%
+  filter(
+    !is.na(response_study_response),
+    is.na(count_test_sequence)
+  ) %>%
+  group_by(workerId, studyResultId, stimtype) %>%
+  summarise(
+    response_study_response = mean(response_study_response),
+    .groups = "drop"
+  )
+
+sd_jds <- gnet2_data %>%
+  filter(
+    !is.na(response_study_response),
+    is.na(count_test_sequence)
+  ) %>%
+  group_by(workerId, studyResultId, stimtype) %>%
+  summarise(
+    response_study_response = sd(response_study_response),
+    .groups = "drop"
+  )
+
+mean_sd_jds <- mean_jds %>%
+  rename(mean_jd = response_study_response) %>%
+  left_join(
+    sd_jds %>%
+      rename(sd_jd = response_study_response),
+    by = c("workerId", "studyResultId", "stimtype")
+  )
+
+mean_sd_jds <- mean_sd_jds %>%
+  mutate(
+    identifier = paste0(workerId, "_", studyResultId)
+  )
+
+rm(mean_jds,sd_jds)
+
+#####
+# mean_sd_jds is output - difference ratings mean and sd for each group of stim for each participant
+```
+
+```{r test_data, include=FALSE}
+# Create a participant-level recognition memory contingency table.
+# For each participant and stimulus type, count familiar hits, misses,
+# novel correct rejections, false alarms, and missing responses.
+# The resulting table contains one row per participant × stimulus type.
+
+test_dat <- gnet2_data %>%
+  filter(!is.na(count_test_sequence)) %>%
+  count(
+    studyResultId,
+    workerId,
+    stimtype,
+    test_quality,
+    rt_corr,
+    name = "N"
+  ) %>%
+  mutate(
+    identifier = paste0(workerId, "_", studyResultId)
+  )
+
+test_dat_c <- test_dat %>%
+  complete(
+    identifier,
+    stimtype,
+    test_quality,
+    rt_corr,
+    fill = list(N = 0)
+  )
+
+test_dat_compl <- test_dat_c %>%
+  mutate(
+    response_type = case_when(
+      test_quality == "fam" & is.na(rt_corr) ~ "fam_NA",
+      test_quality == "fam" & rt_corr == 1 ~ "fam_corr",
+      test_quality == "fam" & rt_corr == 0 ~ "fam_miss",
+      test_quality == "new" & is.na(rt_corr) ~ "new_NA",
+      test_quality == "new" & rt_corr == 1 ~ "new_corr",
+      test_quality == "new" & rt_corr == 0 ~ "new_fa"
+    )
+  ) %>%
+  select(identifier, stimtype, response_type, N) %>%
+  pivot_wider(
+    names_from = response_type,
+    values_from = N,
+    values_fill = 0
+  ) %>%
+  separate(
+    identifier,
+    into = c("workerId", "studyResultId"),
+    sep = "_",
+    remove = FALSE
+  ) %>%
+  select(
+    studyResultId,
+    workerId,
+    stimtype,
+    identifier,
+    fam_NA,
+    fam_corr,
+    fam_miss,
+    new_NA,
+    new_corr,
+    new_fa
+  )
+
+rm(test_dat,test_dat_c)
+#####
+# test_dat_compl is output
+```
+
+```{r exclusions, include=FALSE}
+# Exclusions -------------------------------------------------------------
+
+# Runs with all 160 trials
+usable <- gnet2_data %>%
+  count(workerId, studyResultId, name = "N") %>%
+  filter(N == 160) %>%
+  arrange(studyResultId) %>%
+  distinct(workerId, .keep_all = TRUE) %>%
+  mutate(
+    identifier = paste0(workerId, "_", studyResultId)
+  )
+
+fineids <- usable$identifier
+
+# Number of missed study-phase responses
+study_miss <- gnet2_data %>%
+  filter(
+    response == "None",
+    is.na(count_test_sequence)
+  ) %>%
+  count(workerId, studyResultId, name = "N") %>%
+  mutate(
+    identifier = paste0(workerId, "_", studyResultId)
+  )
+
+# Exclude participants with too many missed study responses
+stmisslimit <- 10
+
+drop_ids_stmiss <- study_miss %>%
+  filter(N >= stmisslimit) %>%
+  pull(identifier)
+
+dropbystmiss <- length(drop_ids_stmiss)
+
+fineids <- setdiff(fineids, drop_ids_stmiss)
+
+mean_sd_jds <- mean_sd_jds %>%
+  filter(identifier %in% fineids)
+
+test_dat_compl <- test_dat_compl %>%
+  filter(identifier %in% fineids)
+
+# Exclude participants with too many missed test responses
+noresp <- test_dat_compl %>%
+  mutate(total_NA = fam_NA + new_NA) %>%
+  group_by(identifier) %>%
+  summarise(
+    total_NA = sum(total_NA),
+    .groups = "drop"
+  )
+
+rtmisslimit <- 20
+
+drop_ids_rtmiss <- noresp %>%
+  filter(total_NA > rtmisslimit) %>%
+  pull(identifier)
+
+dropbyrtmiss <- length(drop_ids_rtmiss)
+
+fineids <- setdiff(fineids, drop_ids_rtmiss)
+
+mean_sd_jds <- mean_sd_jds %>%
+  filter(identifier %in% fineids)
+
+test_dat_compl <- test_dat_compl %>%
+  filter(identifier %in% fineids)
+
+# Exclude participants who judged prototype-prototype pairs as too different
+protj <- mean_sd_jds %>%
+  filter(stimtype == "prototype")
+
+drop_ids_misjud <- protj %>%
+  filter(mean_jd > 5) %>%
+  pull(identifier)
+
+dropbymisjud <- length(drop_ids_misjud)
+
+# filter data accordingly
+
+fineids <- setdiff(fineids, drop_ids_misjud)
+
+mean_sd_jds <- mean_sd_jds %>%
+  filter(identifier %in% fineids)
+
+test_dat_compl <- test_dat_compl %>%
+  filter(identifier %in% fineids)
+
+gnet2_data <- gnet2_data %>%
+  filter(identifier %in% fineids)
+
+```
+
+# Exclusions
+
+We excluded `r dropbystmiss` participants due to a high number of missed
+responses in the study phase (≥ `r stmisslimit`).
+
+We excluded `r dropbyrtmiss` participants due to a high number of missed
+responses in the recognition test (> `r rtmisslimit`).
+
+We excluded `r dropbymisjud` participants due to inattention to task
+details, indicated by a mean difference judgment > 5 for prototype–
+prototype comparisons.
+
+This left `r n_distinct(mean_sd_jds$identifier)` participants in the
+analysis.
+
+The identifiers are:
+
+`r paste(unique(mean_sd_jds$identifier), collapse = ", ")`
+
+# Study phase
+
+Participants make a judgement of the difference between a prototype and a novel picture.
+
+```{r  eval = TRUE, warning=FALSE, echo=FALSE}
+
+ggplot(mean_sd_jds,
+       aes(x = stimtype, y = mean_jd, color = stimtype)) +
+  geom_jitter(width = 0.2, alpha = 0.5) +
+  stat_summary(
+    geom = "errorbar",
+    fun.data = mean_se,
+    width = 0.2
+  ) +
+  stat_summary(
+    geom = "point",
+    fun = mean,
+    color = "black",
+    size = 2,
+    shape = 16
+  ) +
+  stat_summary(
+    fun = mean,
+    geom = "text",
+    color = "black",
+    show.legend = FALSE,
+    vjust = 5,
+    aes(label = round(after_stat(y), 3))
+  )
+
+```
+
+# Test phase
+
+Test phase was the same as before: participants see the novel pictures from the study phase with distractors from the same categories. They signal if they think the picture is an old one from the study phase, or a novel distractor.
+
+```{r  eval = TRUE, warning=FALSE, echo=FALSE}
+
+print("Correct recognition for familiars in test")
+ggplot(test_dat_compl, aes(x=stimtype, y=fam_corr))+
+  geom_jitter(width=0.2, alpha=0.5) +
+  stat_summary(geom = "errorbar", fun.data = mean_se, width = 0.2) +
+  stat_summary(geom = "point",fun.y = "mean",col = "black",size = 2,shape = 16) +
+  stat_summary(fun.y=mean, colour="black", geom="text", show.legend = FALSE, 
+               vjust=-3.0, aes( label=round(..y.., digits=3)))
+
+print("False alarm for novels in test")
+ggplot(test_dat_compl, aes(x=stimtype, y=new_fa))+
+  geom_jitter(width=0.2, alpha=0.5) +
+  stat_summary(geom = "errorbar", fun.data = mean_se, width = 0.2) +
+  stat_summary(geom = "point",fun.y = "mean",col = "black",size = 2,shape = 16) +
+  stat_summary(fun.y=mean, colour="black", geom="text", show.legend = FALSE, 
+               vjust=-3.0, aes( label=round(..y.., digits=3)))
+
+test_dat_compl <- test_dat_compl %>%
+  mutate(
+    CorrectedRecognitions = fam_corr - new_fa,
+    CorrectedRejections = new_corr - fam_miss,
+    OCCategorizations = CorrectedRecognitions + CorrectedRejections
+  )
+
+print("ANOVA with correct recognition minus false alarm or miss by fam/nov")
+a1 <- aov_ez("identifier", "CorrectedRecognitions",
+             test_dat_compl, within = c("stimtype"))
+a1
+m3 <- emmeans(a1, ~ stimtype)
+pairs(m3)
+posthoc <- pairs(m3)
+contrast(m3, "poly")
+
+ggplot(test_dat_compl, aes(x=stimtype, y=CorrectedRecognitions, color=stimtype))+
+  geom_jitter(width=0.2, alpha=0.5) +
+  stat_summary(geom = "errorbar", fun.data = mean_se, width = 0.2) +
+  stat_summary(geom = "point",fun.y = "mean",col = "black",size = 2,shape = 16) +
+  stat_summary(fun.y=mean, colour="black", geom="text", show.legend = FALSE, 
+               vjust=-3.0, aes( label=round(..y.., digits=3)))
+
+print("ANOVA with correct rejection minus false alarm or miss by fam/nov")
+a1 <- aov_ez("identifier", "CorrectedRejections",
+             test_dat_compl, within = c("stimtype"))
+a1
+m3 <- emmeans(a1, ~ stimtype)
+pairs(m3)
+posthoc <- pairs(m3)
+contrast(m3, "poly")
+
+ggplot(test_dat_compl, aes(x=stimtype, y=CorrectedRejections, color=stimtype))+
+  geom_jitter(width=0.2, alpha=0.5) +
+  stat_summary(geom = "errorbar", fun.data = mean_se, width = 0.2) +
+  stat_summary(geom = "point",fun.y = "mean",col = "black",size = 2,shape = 16) +
+  stat_summary(fun.y=mean, colour="black", geom="text", show.legend = FALSE, 
+               vjust=-3.0, aes( label=round(..y.., digits=3)))
+
+print("ANOVA with corrected differentiation score by category ((crecog-fa)+(creject-fa))")
+a1 <- aov_ez("identifier", "OCCategorizations",
+             test_dat_compl, within = c("stimtype"))
+a1
+m3 <- emmeans(a1, ~ stimtype)
+pairs(m3)
+posthoc <- pairs(m3)
+contrast(m3, "poly")
+
+ggplot(test_dat_compl, aes(x=stimtype, y=OCCategorizations, color=stimtype))+
+  geom_jitter(width=0.2, alpha=0.5) +
+  stat_summary(geom = "errorbar", fun.data = mean_se, width = 0.2) +
+  stat_summary(geom = "point",fun.y = "mean",col = "black",size = 2,shape = 16) +
+  stat_summary(fun.y=mean, colour="black", geom="text", show.legend = FALSE, 
+               vjust=-3.0, aes( label=round(..y.., digits=3)))
+
+```
+
+# Mixed models
+
+```{r mixed_models, include=FALSE}
+library(lme4)
+library(lmerTest)
+library(sjPlot)
+
+lmmdat <- gnet2_data
+
+stlmm <- lmmdat %>%
+  filter(is.na(test_quality))
+
+tdlmm <- lmmdat %>%
+  filter(!is.na(test_quality))
+
+tdlmm <- tdlmm %>%
+  mutate(
+    rt_resp = recode(
+      response_test_response,
+      "left" = 0,
+      "right" = 1,
+      .default = NA_real_
+    ),
+    stimtype = factor(stimtype),
+    test_quality = factor(test_quality),
+    rt_corr = as.numeric(rt_corr)
+  )
+```
+
+## Mixed models
+
+```{r  eval = TRUE, warning=FALSE, echo=FALSE}
+
+library(lme4)
+library(sjPlot)
+
+logmr <- glmer(
+  rt_resp ~ stimtype * test_quality + (1 | workerId),
+  data = tdlmm,
+  family = binomial
+)
+
+summary(logmr)
+
+plot_model(logmr, type = "int")
+
+emmeans(logmr, pairwise ~ test_quality | stimtype)
+
+
+logmr2 <- glmer(
+  rt_resp ~ DTF * test_quality + (1 | workerId),
+  data = tdlmm,
+  family = binomial
+)
+
+summary(logmr2)
+
+plot_model(logmr2, type = "int")
+
+
+logmr3 <- glmer(
+  rt_resp ~ DTAF * test_quality + (1 | workerId),
+  data = tdlmm,
+  family = binomial
+)
+
+summary(logmr3)
+
+plot_model(logmr3, type = "int")
+
+
+logmr4 <- glmer(
+  rt_resp ~ DTAN * test_quality + (1 | workerId),
+  data = tdlmm,
+  family = binomial
+)
+
+summary(logmr4)
+
+plot_model(logmr4, type = "int")
+
+
+logmr5 <- glmer(
+  rt_resp ~ DTN * test_quality + (1 | workerId),
+  data = tdlmm,
+  family = binomial
+)
+
+summary(logmr5)
+
+plot_model(logmr5, type = "int")
+
+tab_model(
+  logmr,
+  logmr2,
+  logmr3,
+  logmr4,
+  logmr5,
+  show.est = TRUE,
+  show.se = TRUE,
+  show.r2 = TRUE,
+  show.aic = TRUE,
+  show.aicc = TRUE,
+  transform = NULL
+)
+
+
+```
+
+## ALT - Mixed models
+
+Use sum-to-zero contrasts so that coefficients are interpreted as
+deviations from the grand mean rather than comparisons with the
+reference level (D1). This is useful when no stimulus type serves
+as a theoretically meaningful baseline condition.
+
+
+```{r  eval = TRUE, warning=FALSE, echo=FALSE}
+contrasts(tdlmm$stimtype) <- contr.sum
+contrasts(tdlmm$test_quality) <- contr.sum
+
+model <- glmer(
+  rt_resp ~ stimtype * test_quality + (1 | workerId),
+  data = tdlmm,
+  family = binomial
+)
+
+summary(model)
+```

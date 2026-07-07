@@ -1,0 +1,699 @@
+---
+title: "GNET - 4 elements - basic analysis"
+output:
+  html_document:
+    toc: true
+    toc_float:
+      collapsed: false
+    toc_depth: 4
+---
+
+# GNET - 4 elements
+
+This is the analysis of a simplified version of the Graded Novelty Encoding Task (GNET). 
+The original GNET used stimuli composed of five elements and six colors. 
+To improve performance, the task was simplified by reducing stimuli to four elements (GNET4E) and three colors.
+
+As in the original task, stimuli were algorithmically generated, allowing precise comparison between stimuli.
+The difference between the stimulus presented and other stimuli (several comparisons are used) is a proxy for novelty.
+
+During familiarization, participants learned a set of 5 stimuli
+During the study phase, they differentiated between these and novel stimuli.
+During the test phase, the performed a recognition memory test for the novels intermixed with distractors.
+- Novels and distractors were balanced.
+
+In the original GNET, recognition performance tended to increase monotonically with difference to familiars
+In the GNET4E participants showed their highest categorization performance for stimuli at intermediate levels of difference.
+
+## Difference indices
+
+```{r preparations, include=FALSE}
+source("01_DIFFERENCE_CALCULATIONS.R")
+
+library(tidyverse)
+library(ez)
+library(emmeans)
+library(DescTools)
+library(afex)
+library(effsize)
+library(Hmisc)
+```
+
+## Participant level calculated variables
+
+```{r calculations, include=FALSE}
+gnet2_data <- read_csv(
+  "alldata_pilot2_alldiffind.csv",
+  locale = locale(encoding = "Windows-1250")
+)
+
+gnet2_data <- gnet2_data %>%
+  mutate(
+    stimulus_id = str_remove(stim, "\\.png$")
+  ) %>%
+  left_join(
+    difference_indices %>%
+      select(stimulus_id, DTF, DTAF, DTAN, DTN),
+    by = "stimulus_id"
+  )
+
+# Na is changed to 0
+gnet2_data <- gnet2_data %>%
+  mutate(
+    st_corr = replace_na(st_corr, 0)
+  )
+
+# Create a unique participant-session identifier so that repeated runs
+# by the same worker are treated as separate observations.
+gnet2_data <- gnet2_data %>%
+  mutate(
+    identifier = str_c(workerId, studyResultId, sep = "_")
+  )
+
+# GENERATE STUDY DT ####
+# correct study responses by type
+# divided by all study trials by type
+# to calculate correct categorization rate (during study)
+strecog <- gnet2_data %>%
+  filter(is.na(count_test_sequence)) %>%
+  group_by(studyResultId, workerId, stimtype) %>%
+  summarise(
+    CCategorization = sum(st_corr),
+    NrTrials = n(),
+    crrate = CCategorization / NrTrials,
+    .groups = "drop"
+  ) %>%
+  mutate(
+    # Create a unique identifier for each participant-session combination
+    identifier = str_c(workerId, studyResultId, sep = "_")
+  )
+#####
+
+# GENERATE TEST DATA ####
+# we calculate the number of all response types during test by participant and stimtype
+test_dat_compl <- gnet2_data %>%
+  filter(!is.na(count_test_sequence)) %>%
+  mutate(
+    identifier = str_c(workerId, studyResultId, sep = "_"),
+    response_type = case_when(
+      test_quality == "fam" & is.na(rt_corr) ~ "fam_NA",
+      test_quality == "fam" & rt_corr == 1 ~ "fam_corr",
+      test_quality == "fam" & rt_corr == 0 ~ "fam_miss",
+      test_quality == "new" & is.na(rt_corr) ~ "new_NA",
+      test_quality == "new" & rt_corr == 1 ~ "new_corr",
+      test_quality == "new" & rt_corr == 0 ~ "new_fa"
+    )
+  ) %>%
+  count(
+    studyResultId,
+    workerId,
+    stimtype,
+    identifier,
+    response_type
+  ) %>%
+  pivot_wider(
+    names_from = response_type,
+    values_from = n,
+    values_fill = 0
+  )
+# strecog & test_dat_compl holds the data from st and rt
+```
+
+## Exclusions
+
+```{r exclusions, include=FALSE}
+
+# this section is for exclusions
+
+total_runs <- gnet2_data %>%
+  distinct(workerId, studyResultId) %>%
+  nrow()
+
+usable <- gnet2_data %>%
+  count(workerId, studyResultId, name = "N") %>%
+  filter(N == 175) %>%
+  arrange(studyResultId) %>%
+  distinct(workerId, .keep_all = TRUE) %>%
+  mutate(identifier = paste(workerId, studyResultId, sep = "_"))
+
+fineids <- unique(usable$identifier)
+
+crates <- strecog %>%
+  filter(stimtype == "prototype") %>%
+  select(identifier, crrate)
+
+# Calculate participant-level recognition performance:
+# R = proportion of "left" responses to prototype items (hits),
+# FA = proportion of "left" responses to non-prototype items (false alarms),
+# CR = corrected recognition score (R - FA)
+
+StudySummary <- gnet2_data %>%
+  filter(
+    is.na(count_test_sequence),
+    response == "left",
+    stimtype == "prototype"
+  ) %>%
+  count(workerId, studyResultId, name = "n") %>%
+  mutate(R = n / 25) %>%
+  select(workerId, studyResultId, R)
+
+StudyFA <- gnet2_data %>%
+  filter(
+    is.na(count_test_sequence),
+    response == "left",
+    stimtype != "prototype"
+  ) %>%
+  count(workerId, studyResultId, name = "n") %>%
+  mutate(FA = n / 50) %>%
+  select(workerId, studyResultId, FA)
+
+StudyCR <- StudySummary %>%
+  full_join(StudyFA, by = c("workerId", "studyResultId")) %>%
+  mutate(
+    FA = replace_na(FA, 0),
+    CR = R - FA
+  )
+
+rm(StudySummary, StudyFA)
+
+# Estimate participant-level confidence intervals for study-phase recognition
+# accuracy to identify and potentially exclude chance-level performers.
+
+StudyBinom <- gnet2_data %>%
+  filter(
+    is.na(count_test_sequence),
+    response == "left"
+  ) %>%
+  select(workerId, studyResultId, response, stimtype) %>%
+  mutate(
+    RespBinomial = if_else(stimtype == "prototype", 1, 0)
+  )
+
+# Compute binomial confidence intervals for each participant
+
+StudyCI <- StudyBinom %>%
+  group_by(workerId, studyResultId) %>%
+  summarise(
+    successes = sum(RespBinomial),
+    trials = n(),
+    .groups = "drop"
+  ) %>%
+  rowwise() %>%
+  mutate(
+    confint = list(binconf(successes, trials)),
+    CI_lower = confint[1, 2],
+    CI_upper = confint[1, 3]
+  ) %>%
+  ungroup() %>%
+  select(workerId, studyResultId, CI_lower, CI_upper)
+
+# Add confidence intervals to StudyCR
+
+StudyCR <- StudyCR %>%
+  left_join(
+    StudyCI,
+    by = c("workerId", "studyResultId")
+  )
+
+StudyCR <- StudyCR %>%
+  semi_join(
+    usable,
+    by = c("workerId", "studyResultId")
+  )
+
+insufficient_data <- StudyCR %>%
+  nrow() -
+  (usable %>% nrow())
+
+
+# Retain only participants whose lower confidence bound exceeds the
+# predefined chance-performance threshold, indicating reliable recognition
+# during the study phase.
+
+# Exclusion criterion based on corrected recognition rate
+StudySummary <- StudyCR %>%
+  filter(CR > 0)
+
+# Exclusion criterion based on uncorrected recognition rate
+StudySummary <- StudySummary %>%
+  filter(CI_lower > 0.33)
+
+ExcludePrototypeRecog <- nrow(StudyCR) - nrow(StudySummary)
+
+# we put an identifier in this tibble
+StudySummary <- StudySummary %>%
+  mutate(
+    identifier = paste(workerId, studyResultId, sep = "_")
+  )
+
+# we filter all relevant tibbles to remove excluded IDs
+strecog <- strecog %>%
+  filter(identifier %in% StudySummary$identifier)
+
+test_dat_compl <- test_dat_compl %>%
+  filter(identifier %in% StudySummary$identifier)
+
+gnet2_data <- gnet2_data %>%
+  filter(identifier %in% StudySummary$identifier)
+
+# Exclude participants with excessive missing responses in the test phase.
+# The total number of missing familiarity and novelty responses is summed for
+# each participant, and only those below the predefined threshold are retained.
+
+norespfam <- test_dat_compl %>%
+  group_by(identifier) %>%
+  summarise(fam_missing = sum(fam_NA), .groups = "drop")
+
+norespnew <- test_dat_compl %>%
+  group_by(identifier) %>%
+  summarise(new_missing = sum(new_NA), .groups = "drop")
+
+noresp <- norespfam %>%
+  inner_join(norespnew, by = "identifier") %>%
+  mutate(
+    nor = fam_missing + new_missing
+  )
+
+nrlimit <- 20  # maximum allowed number of missing responses
+
+noresp_ok <- noresp %>%
+  filter(nor <= nrlimit)
+
+dropbynoresp <- nrow(noresp) - nrow(noresp_ok)
+
+strecog <- strecog %>%
+  filter(identifier %in% noresp_ok$identifier)
+
+test_dat_compl <- test_dat_compl %>%
+  filter(identifier %in% noresp_ok$identifier)
+
+gnet2_data <- gnet2_data %>%
+  filter(identifier %in% noresp_ok$identifier)
+```
+
+In total, the task was run `r total_runs` times.
+
+`r insufficient_data` runs were not completed or were duplicates.
+
+We excluded `r ExcludePrototypeRecog` participants due to low performance in the study phase. We calculated confidence intervals for the proportion of endorsed items that were previously studied ("old") and excluded participants whose lower confidence bound fell below 0.33.
+
+We excluded `r dropbynoresp` participants due to missed responses in the test phase (> `r nrlimit` missing responses).
+
+This left `r strecog %>% dplyr::distinct(identifier) %>% nrow()` participants in the analysis.
+
+## Demography
+
+```{r sample_demography, include=FALSE}
+
+gnet2_register <- read.csv(
+  "gnet_v2_-_register.csv",
+  encoding = "UTF-8",
+  stringsAsFactors = FALSE
+) %>%
+  setNames(c(
+    "datetime", "workerId", "age", "gen",
+    "health", "sleep", "coffee", "smoke", "alcdrug"
+  )) %>%
+  mutate(workerId = as.character(workerId)) %>%
+  semi_join(
+    gnet2_data %>%
+      distinct(workerId) %>%
+      mutate(workerId = as.character(workerId)),
+    by = "workerId"
+  ) %>%
+  distinct(workerId, .keep_all = TRUE)
+```
+
+The sample had a mean (± SD) age of `r mean(gnet2_register$age, na.rm = TRUE)` ± `r sd(gnet2_register$age, na.rm = TRUE)`.
+
+The sample contained `r gnet2_register %>% filter(gen == "Nő") %>% nrow()` women.
+
+# Analysis
+
+## Study phase
+
+ANOVA to compare the rejection rate for each difference category; plot shows the prototype recog rate also.
+
+```{r eval=TRUE, warning=FALSE, echo=FALSE}
+
+# ANOVA testing whether correct rejection rates differ across novel item types
+
+a1 <- aov_ez(
+  id = "identifier",
+  dv = "crrate",
+  data = strecog %>% filter(stimtype != "prototype"),
+  within = "stimtype"
+)
+
+a1
+
+m3 <- emmeans(a1, ~ stimtype)
+
+pairs(m3)
+
+contrast(m3, "poly")
+
+ggplot(
+  strecog %>% filter(stimtype != "xxx"), # type - prototype to remove it from the plot
+  aes(x = stimtype, y = crrate, color = stimtype)
+) +
+  geom_jitter(width = 0.2, alpha = 0.2) +
+  stat_summary(
+    geom = "errorbar",
+    fun.data = mean_se,
+    width = 0.2
+  ) +
+  stat_summary(
+    geom = "point",
+    fun = mean,
+    color = "black",
+    size = 2,
+    shape = 16
+  ) +
+  stat_summary(
+    fun = mean,
+    geom = "text",
+    color = "black",
+    vjust = 5,
+    aes(label = round(after_stat(y), 3))
+  )
+
+```
+
+## Test phase
+
+```{r  eval = TRUE, warning=FALSE, echo=FALSE}
+
+# BY RESPONSE TYPE
+
+a <- test_dat_compl$fam_corr
+b <- test_dat_compl$new_fa
+
+print(t.test(a, b, paired = TRUE))
+print(cohen.d(a, b, paired = TRUE, conf.level = 0.95))
+
+d <- test_dat_compl %>%
+  mutate(diff = fam_corr - new_fa) %>%
+  pull(diff)
+
+print(shapiro.test(d))
+
+print("Correct recognition for familiars in test")
+
+ggplot(test_dat_compl, aes(x = stimtype, y = fam_corr)) +
+  geom_jitter(width = 0.2, alpha = 0.5) +
+  stat_summary(geom = "errorbar", fun.data = mean_se, width = 0.2) +
+  stat_summary(geom = "point", fun = mean,
+               color = "black", size = 2, shape = 16) +
+  stat_summary(
+    fun = mean,
+    geom = "text",
+    color = "black",
+    show.legend = FALSE,
+    vjust = -3,
+    aes(label = round(after_stat(y), 3))
+  )
+
+print("False alarm for novels in test")
+
+ggplot(test_dat_compl, aes(x = stimtype, y = new_fa)) +
+  geom_jitter(width = 0.2, alpha = 0.5) +
+  stat_summary(geom = "errorbar", fun.data = mean_se, width = 0.2) +
+  stat_summary(geom = "point", fun = mean,
+               color = "black", size = 2, shape = 16) +
+  stat_summary(
+    fun = mean,
+    geom = "text",
+    color = "black",
+    show.legend = FALSE,
+    vjust = -3,
+    aes(label = round(after_stat(y), 3))
+  )
+
+test_dat_compl <- test_dat_compl %>%
+  mutate(
+    CorrectedRecognitions = fam_corr - new_fa,
+    CorrectedRejections = new_corr - fam_miss,
+    OCCategorizations = CorrectedRecognitions + CorrectedRejections
+  )
+
+print("ANOVA with correct recognition minus false alarm by category")
+
+a1 <- aov_ez(
+  id = "identifier",
+  dv = "CorrectedRecognitions",
+  data = test_dat_compl,
+  within = "stimtype"
+)
+
+a1
+
+m3 <- emmeans(a1, ~ stimtype)
+pairs(m3)
+posthoc <- pairs(m3)
+contrast(m3, "poly")
+
+ggplot(test_dat_compl,
+       aes(x = stimtype,
+           y = CorrectedRecognitions,
+           color = stimtype)) +
+  geom_jitter(width = 0.2, alpha = 0.5) +
+  stat_summary(geom = "errorbar", fun.data = mean_se, width = 0.2) +
+  stat_summary(geom = "point", fun = mean,
+               color = "black", size = 2, shape = 16) +
+  stat_summary(
+    fun = mean,
+    geom = "text",
+    color = "black",
+    show.legend = FALSE,
+    vjust = -3,
+    aes(label = round(after_stat(y), 3))
+  )
+
+print("ANOVA with correct rejection minus misses by category")
+
+a1 <- aov_ez(
+  id = "identifier",
+  dv = "CorrectedRejections",
+  data = test_dat_compl,
+  within = "stimtype"
+)
+
+a1
+
+m3 <- emmeans(a1, ~ stimtype)
+pairs(m3)
+posthoc <- pairs(m3)
+contrast(m3, "poly")
+
+ggplot(test_dat_compl,
+       aes(x = stimtype,
+           y = CorrectedRejections,
+           color = stimtype)) +
+  geom_jitter(width = 0.2, alpha = 0.5) +
+  stat_summary(geom = "errorbar", fun.data = mean_se, width = 0.2) +
+  stat_summary(geom = "point", fun = mean,
+               color = "black", size = 2, shape = 16) +
+  stat_summary(
+    fun = mean,
+    geom = "text",
+    color = "black",
+    show.legend = FALSE,
+    vjust = -3,
+    aes(label = round(after_stat(y), 3))
+  )
+
+print("ANOVA with overall corrected categorization score")
+
+a1 <- aov_ez(
+  id = "identifier",
+  dv = "OCCategorizations",
+  data = test_dat_compl,
+  within = "stimtype"
+)
+
+a1
+
+m3 <- emmeans(a1, ~ stimtype)
+pairs(m3)
+posthoc <- pairs(m3)
+contrast(m3, "poly")
+
+ggplot(test_dat_compl,
+       aes(x = stimtype,
+           y = OCCategorizations,
+           color = stimtype)) +
+  geom_jitter(width = 0.2, alpha = 0.5) +
+  stat_summary(geom = "errorbar", fun.data = mean_se, width = 0.2) +
+  stat_summary(geom = "point", fun = mean,
+               color = "black", size = 2, shape = 16) +
+  stat_summary(
+    fun = mean,
+    geom = "text",
+    color = "black",
+    show.legend = FALSE,
+    vjust = -3,
+    aes(label = round(after_stat(y), 3))
+  )
+```
+### Mixed models
+
+```{r include = FALSE}
+
+library(lme4)
+library(lmerTest)
+library(sjPlot)
+library(ggeffects)
+library(performance)
+
+lmmdat <- gnet2_data
+
+stlmm <- lmmdat %>%
+  filter(is.na(test_quality))
+
+tdlmm <- lmmdat %>%
+  filter(!is.na(test_quality))
+```
+
+## Test phase
+
+```{r  eval = TRUE, warning=FALSE, echo=FALSE}
+
+tdlmm <- tdlmm %>%
+  mutate(
+    rt_resp = case_when(
+      response_test_response == "left"  ~ 0,
+      response_test_response == "right" ~ 1,
+      TRUE ~ NA_real_
+    ),
+    rt_resp = as.numeric(rt_resp),
+    stimtype = as.factor(stimtype),
+    test_quality = as.factor(test_quality),
+    rt_corr = as.numeric(rt_corr)
+  )
+
+logmr <- glmer(
+  rt_resp ~ stimtype * test_quality + (1 | workerId),
+  data = tdlmm,
+  family = binomial,
+  control = glmerControl(
+    optCtrl = list(
+      xtol_abs = 1e-8,
+      ftol_abs = 1e-8,
+      maxeval = 100000
+    )
+  )
+)
+
+summary(logmr)
+# plot_model(logmr, type = "eff")
+plot_model(logmr, type = "int")
+emmeans(logmr, pairwise ~ test_quality | stimtype)
+
+pred <- ggpredict(logmr, terms = c("stimtype", "test_quality"))
+plot(pred)
+
+# Main model
+mod <- glmer(
+  rt_resp ~ stimtype * test_quality + (1 | workerId),
+  data = tdlmm,
+  family = binomial
+)
+
+# Estimated marginal means
+emm <- emmeans(mod, ~ stimtype * test_quality)
+
+# Polynomial contrasts across D1-D5
+contrast(
+  emmeans(mod, ~ stimtype),
+  method = "poly"
+)
+
+emmeans(logmr, pairwise ~ test_quality | stimtype)
+
+################ DTF
+
+
+logmr2 <- glmer(
+  rt_resp ~ DTF * test_quality + (1 | workerId),
+  data = tdlmm,
+  family = binomial
+)
+
+summary(logmr2)
+# plot_model(logmr2, type = "eff")
+plot_model(logmr2, type = "int")
+
+logmr3 <- glmer(
+  rt_resp ~ DTAF * test_quality + (1 | workerId),
+  data = tdlmm,
+  family = binomial
+)
+
+summary(logmr3)
+# plot_model(logmr3, type = "eff")
+plot_model(logmr3, type = "int")
+
+logmr4 <- glmer(
+  rt_resp ~ DTAN * test_quality + (1 | workerId),
+  data = tdlmm,
+  family = binomial
+)
+
+summary(logmr4)
+# plot_model(logmr4, type = "eff")
+plot_model(logmr4, type = "int")
+
+logmr5 <- glmer(
+  rt_resp ~ DTN * test_quality + (1 | workerId),
+  data = tdlmm,
+  family = binomial
+)
+
+summary(logmr5)
+# plot_model(logmr5, type = "eff")
+plot_model(logmr5, type = "int")
+
+compare_performance(
+  logmr,
+  logmr2,
+  logmr3,
+  logmr4,
+  logmr5,
+  rank = TRUE
+)
+
+# tab_model(
+#   logmr,
+#   logmr2,
+#   logmr3,
+#   logmr4,
+#   logmr5,
+#   show.est = TRUE,
+#   show.se = TRUE,
+#   show.r2 = TRUE,
+#   show.aic = TRUE,
+#   show.aicc = TRUE,
+#   transform = NULL
+# )
+```
+
+## ALT - Mixed models
+
+Use sum-to-zero contrasts so that coefficients are interpreted as
+deviations from the grand mean rather than comparisons with the
+reference level (D1). This is useful when no stimulus type serves
+as a theoretically meaningful baseline condition.
+
+```{r  eval = TRUE, warning=FALSE, echo=FALSE}
+contrasts(tdlmm$stimtype) <- contr.sum
+contrasts(tdlmm$test_quality) <- contr.sum
+
+model <- glmer(
+  rt_resp ~ stimtype * test_quality + (1 | workerId),
+  data = tdlmm,
+  family = binomial
+)
+
+summary(model)
+```

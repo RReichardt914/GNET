@@ -1,4 +1,8 @@
 #####
+# this script calculates difference scores between the image presented currently and all previous images
+# this is experimental atm
+# not translated to tidyverse - 2026.06.23.
+############
 # gnet2_data produced by both preprocess scripts!
 p3 <- gnet2_data
 

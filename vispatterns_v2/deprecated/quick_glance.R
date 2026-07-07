@@ -1,3 +1,6 @@
+# this generates some plots
+# not translated to tidyverse - 2026.06.23.
+
 correct <- gnet2_data[test_quality == "new" & rt_corr == 1, .N, by=workerId]
 miss <- gnet2_data[test_quality == "new" & rt_corr == 0, .N, by=workerId]
 sum <- merge(correct,miss,by="workerId")
