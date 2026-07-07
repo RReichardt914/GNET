@@ -264,7 +264,7 @@ study_miss <- gnet2_data %>%
   )
 
 # Exclude participants with too many missed study responses
-stmisslimit <- 10
+stmisslimit <- 20
 
 drop_ids_stmiss <- study_miss %>%
   filter(N >= stmisslimit) %>%
@@ -289,7 +289,7 @@ noresp <- test_dat_compl %>%
     .groups = "drop"
   )
 
-rtmisslimit <- 20
+rtmisslimit <- 33
 
 drop_ids_rtmiss <- noresp %>%
   filter(total_NA > rtmisslimit) %>%
@@ -309,8 +309,10 @@ test_dat_compl <- test_dat_compl %>%
 protj <- mean_sd_jds %>%
   filter(stimtype == "prototype")
 
+# this now doesnt exclude anyone!
+
 drop_ids_misjud <- protj %>%
-  filter(mean_jd > 5) %>%
+  filter(mean_jd > 15) %>%
   pull(identifier)
 
 dropbymisjud <- length(drop_ids_misjud)
@@ -588,4 +590,32 @@ model <- glmer(
 )
 
 summary(model)
+```
+
+## image effects
+
+```{r  eval = TRUE, warning=FALSE, echo=FALSE}
+mod_img <- glmer(
+  rt_resp ~ stimtype * test_quality +
+    (1 | workerId) +
+    (1 | stim),
+  data = tdlmm,
+  family = binomial
+)
+summary((mod_img))
+
+emmeans(mod_img, pairwise ~ test_quality | stimtype)
+```
+
+## is the interaction significant?
+
+```{r  eval = TRUE, warning=FALSE, echo=FALSE}
+mod_no_interaction <- glmer(
+  rt_resp ~ stimtype + test_quality +
+    (1 | workerId) + (1 | stim),
+  data = tdlmm,
+  family = binomial
+)
+
+anova(mod_no_interaction, mod_img)
 ```

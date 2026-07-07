@@ -555,7 +555,7 @@ tdlmm <- lmmdat %>%
   filter(!is.na(test_quality))
 ```
 
-## Test phase
+## Mixed models
 
 ```{r  eval = TRUE, warning=FALSE, echo=FALSE}
 
@@ -696,4 +696,19 @@ model <- glmer(
 )
 
 summary(model)
+```
+
+## image effects
+
+```{r  eval = TRUE, warning=FALSE, echo=FALSE}
+mod_img <- glmer(
+  rt_resp ~ stimtype * test_quality +
+    (1 | workerId) +
+    (1 | stim),
+  data = tdlmm,
+  family = binomial
+)
+summary((mod_img))
+
+emmeans(mod_img, pairwise ~ test_quality | stimtype)
 ```
