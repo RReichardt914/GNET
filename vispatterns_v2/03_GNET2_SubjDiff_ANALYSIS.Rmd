@@ -24,8 +24,6 @@ During the test phase, the performed a recognition memory test for the novels in
 In the original GNET, recognition performance tended to increase monotonically with difference to familiars
 In the GNET4E participants showed their highest categorization performance for stimuli at intermediate levels of difference.
 
-## Difference indices
-
 ```{r preparations, include=FALSE}
 source("01_DIFFERENCE_CALCULATIONS.R")
 
@@ -95,7 +93,7 @@ gnet2_data <- read_csv(
 ```
 
 ```{r add_diff_indices, include=FALSE}
-# preprocessed data and difference indices are used to calculate study and test indices
+# data and difference indices are used to calculate study and test indices
 
 gnet2_data <- gnet2_data %>%
   rowwise() %>%
@@ -240,6 +238,10 @@ rm(test_dat,test_dat_c)
 ```{r exclusions, include=FALSE}
 # Exclusions -------------------------------------------------------------
 
+total_runs <- gnet2_data %>%
+  distinct(workerId, studyResultId) %>%
+  nrow()
+
 # Runs with all 160 trials
 usable <- gnet2_data %>%
   count(workerId, studyResultId, name = "N") %>%
@@ -251,6 +253,10 @@ usable <- gnet2_data %>%
   )
 
 fineids <- usable$identifier
+
+# Estimate participant-level confidence intervals for study-phase recognition
+# accuracy to identify and potentially exclude chance-level performers.
+
 
 # Number of missed study-phase responses
 study_miss <- gnet2_data %>%
@@ -289,7 +295,7 @@ noresp <- test_dat_compl %>%
     .groups = "drop"
   )
 
-rtmisslimit <- 33
+rtmisslimit <- 20
 
 drop_ids_rtmiss <- noresp %>%
   filter(total_NA > rtmisslimit) %>%
@@ -333,6 +339,8 @@ gnet2_data <- gnet2_data %>%
 ```
 
 # Exclusions
+
+The task was started `r total_runs` times.
 
 We excluded `r dropbystmiss` participants due to a high number of missed
 responses in the study phase (≥ `r stmisslimit`).
