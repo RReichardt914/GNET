@@ -442,8 +442,6 @@ stlmm <- stlmm %>%
     )
   )
 
-library(lme4)
-
 rating_mod <- lmer(
   similarity_rating ~ difference_level +
     (1 + difference_level | workerId) +

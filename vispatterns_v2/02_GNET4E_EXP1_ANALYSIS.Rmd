@@ -385,8 +385,9 @@ stlmm$stimtype <- relevel(stlmm$stimtype, ref = "prototype")
 #
 # The model estimates the probability of a correct response on each trial.
 st_mod1 <- glmer(
-  st_corr ~ stimtype + count_study_sequence +
-    (1 | workerId),
+  st_corr ~ stimtype +
+    (1 | workerId) +
+    (1 | stim),
   data = stlmm,
   family = binomial
 )
